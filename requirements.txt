@@ -1,0 +1,20 @@
+fastapi>=0.110.0
+uvicorn[standard]
+numpy
+opencv-python
+yt-dlp
+# 数据库与向量
+faiss-cpu  # Windows上装gpu版比较麻烦，且检索量不大时CPU够用，推理用GPU即可
+aiosqlite
+# AI 模型相关
+torch --index-url https://download.pytorch.org/whl/cu128
+torchvision --index-url https://download.pytorch.org/whl/cu128
+transformers
+huggingface_hub
+accelerate
+pillow
+einops
+timm
+# InsightFace 依赖
+insightface
+onnxruntime-gpu

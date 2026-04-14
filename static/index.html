@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>社交媒体人脸数据采集与智能检索系统</title>
+    <meta charset="utf-8">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .modal-active {
+            overflow: hidden;
+        }
+
+        .transition-all {
+            transition-property: all;
+            transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+            transition-duration: 300ms;
+        }
+
+        /* 自定义滚动条 */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #c7c7c7;
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: #a0a0a0;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-50 text-gray-800 min-h-screen font-sans">
+
+    <nav class="bg-white shadow-sm sticky top-0 z-40">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <div class="flex-shrink-0 flex items-center gap-2">
+                    <i class="fas fa-robot text-indigo-600 text-2xl"></i>
+                    <span class="font-bold text-xl tracking-tight">社交媒体人脸数据采集与智能检索系统</span>
+                </div>
+                <div class="flex space-x-2">
+                    <button onclick="switchTab('search')" id="nav-search"
+                        class="nav-btn px-4 py-2 rounded-md font-medium bg-indigo-50 text-indigo-700 transition">
+                        <i class="fas fa-search mr-1"></i> 检索与采集
+                    </button>
+                    <button onclick="switchTab('gallery')" id="nav-gallery"
+                        class="nav-btn px-4 py-2 rounded-md font-medium text-gray-500 hover:bg-gray-50 transition">
+                        <i class="fas fa-users mr-1"></i> 聚类人物库
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto p-6 mt-4">
+
+        <div id="tab-search" class="tab-content space-y-6">
+
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <h2 class="text-lg font-bold mb-4 flex items-center gap-2"><i class="fab fa-youtube text-red-500"></i>
+                    数据采集</h2>
+                <div class="flex gap-3">
+                    <input id="ytUrl" type="text" placeholder="输入视频链接"
+                        class="border border-gray-300 px-4 py-2 flex-1 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition">
+                    <button onclick="collect()" id="btnCollect"
+                        class="bg-gray-900 text-white px-6 py-2 rounded-lg hover:bg-gray-800 shadow-sm transition flex items-center gap-2">
+                        <i class="fas fa-cloud-download-alt"></i> 开始处理
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <h2 class="text-lg font-bold mb-4 flex items-center gap-2"><i
+                            class="fas fa-align-left text-blue-500"></i> 语义检索</h2>
+                    <div class="flex flex-col gap-3">
+                        <input id="textQuery" type="text" placeholder="描述场景或人物"
+                            class="border border-gray-300 px-4 py-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                            onkeydown="if(event.keyCode==13) searchText()">
+                        <button onclick="searchText()" id="btnText"
+                            class="bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition shadow-sm">
+                            文本搜索
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                    <h2 class="text-lg font-bold mb-4 flex items-center gap-2"><i
+                            class="fas fa-image text-purple-500"></i> 以图搜图</h2>
+                    <div class="flex flex-col gap-3">
+                        <input id="fileInput" type="file" accept="image/*"
+                            class="border border-gray-300 px-4 py-1.5 rounded-lg file:mr-4 file:py-1 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100">
+                        <button onclick="searchImage()" id="btnImg"
+                            class="bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700 transition shadow-sm">
+                            上传并比对
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-8">
+                <div class="flex justify-between items-end mb-4">
+                    <h3 class="text-xl font-bold">检索结果</h3>
+                    <span id="resultCount" class="text-sm text-gray-500"></span>
+                </div>
+                <div id="results" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-5">
+                    <div
+                        class="col-span-full text-center py-12 text-gray-400 bg-white rounded-xl border border-dashed border-gray-300">
+                        输入搜索条件开始检索
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-gallery" class="tab-content hidden space-y-6">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
+                <div>
+                    <h2 class="text-xl font-bold flex items-center gap-2"><i
+                            class="fas fa-address-book text-indigo-500"></i> 人物档案库</h2>
+                    <p class="text-sm text-gray-500 mt-1">系统已将检测到的相似人脸自动归类</p>
+                </div>
+                <button onclick="runClustering()" id="btnCluster"
+                    class="bg-indigo-600 text-white px-6 py-2.5 rounded-lg shadow-sm hover:bg-indigo-700 transition flex items-center gap-2">
+                    <i class="fas fa-magic"></i> 更新聚类结果
+                </button>
+            </div>
+
+            <div id="peopleGrid" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
+            </div>
+            <div class="flex items-center my-8">
+                <div class="flex-grow h-px bg-gray-200"></div>
+                <span class="px-4 text-sm text-gray-400 font-medium">手动归类</span>
+                <div class="flex-grow h-px bg-gray-200"></div>
+            </div>
+
+            <div class="bg-gray-50 rounded-2xl p-6 border-2 border-dashed border-gray-200">
+                <h3 class="text-sm font-bold text-gray-500 mb-4 flex items-center gap-2">
+                    <i class="fas fa-layer-group"></i> 待处理人脸 (将人脸拖动到上方头像完成归类)
+                </h3>
+                <div id="unassignedGrid" class="flex flex-wrap gap-3 min-h-[100px]">
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <div id="detailModal"
+        class="fixed inset-0 z-50 flex items-center justify-center opacity-0 pointer-events-none transition-all duration-300">
+        <div class="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onclick="closeDetailModal()"></div>
+
+        <div class="bg-white w-11/12 max-w-2xl rounded-2xl shadow-2xl z-10 transform scale-95 transition-all duration-300 flex flex-col max-h-[90vh]"
+            id="detailModalCard">
+
+            <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
+                <h3 class="text-lg font-bold text-gray-800">详细分析报告</h3>
+                <button onclick="closeDetailModal()" class="text-gray-400 hover:text-gray-600 transition">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+
+            <div class="p-6 overflow-y-auto">
+                <div class="flex flex-col md:flex-row gap-6">
+                    <div class="w-full md:w-1/2 flex-shrink-0">
+                        <div
+                            class="bg-gray-100 rounded-lg overflow-hidden border border-gray-200 aspect-square flex items-center justify-center relative group">
+                            <img id="modalImg" src="" class="max-w-full max-h-full object-contain">
+                        </div>
+                        <div id="modalScoreContainer" class="mt-3 text-center hidden">
+                            <span
+                                class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                                <i class="fas fa-check-circle"></i> 匹配度: <span id="modalScore">0.00</span>
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="w-full md:w-1/2 space-y-5">
+                        <div>
+                            <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">AI 场景语义分析</h4>
+                            <p id="modalDesc"
+                                class="text-sm text-gray-700 leading-relaxed bg-blue-50/50 p-3 rounded-lg border border-blue-100">
+                            </p>
+                        </div>
+
+                        <div>
+                            <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">数据溯源</h4>
+                            <div class="space-y-2 text-sm text-gray-600">
+                                <p class="flex items-center gap-2"><i class="fas fa-fingerprint w-4"></i> ID: <span
+                                        id="modalFaceId" class="font-mono"></span></p>
+                                <p class="flex items-center gap-2"><i class="fas fa-video w-4"></i> 视频: <span
+                                        id="modalVideoId" class="font-mono"></span></p>
+                                <p class="flex items-center gap-2"><i class="far fa-clock w-4"></i> 时间点: <span
+                                        id="modalTimeStr"></span></p>
+                            </div>
+                        </div>
+
+                        <div class="pt-2">
+                            <a id="modalYtLink" href="#" target="_blank"
+                                class="w-full inline-flex justify-center items-center gap-2 px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition shadow shadow-red-500/30">
+                                <i class="fab fa-youtube text-lg"></i> 在视频中查看该画面
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="timelineModal"
+        class="fixed inset-0 z-40 flex items-center justify-center opacity-0 pointer-events-none transition-all duration-300">
+        <div class="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onclick="closeTimelineModal()"></div>
+        <div class="bg-white w-11/12 max-w-4xl rounded-2xl shadow-2xl z-10 h-[85vh] flex flex-col">
+            <div class="px-6 py-4 border-b flex justify-between items-center bg-gray-50 rounded-t-2xl">
+                <div>
+                    <h3 class="text-xl font-bold text-gray-800" id="timelineTitle">人物出场时间轴</h3>
+                    <p class="text-sm text-gray-500">点击画面可查看具体详情</p>
+                </div>
+                <button onclick="closeTimelineModal()" class="text-gray-400 hover:text-gray-600"><i
+                        class="fas fa-times text-xl"></i></button>
+            </div>
+            <div class="p-6 overflow-y-auto flex-1 bg-gray-50" id="timelineContent">
+            </div>
+        </div>
+    </div>
+
+    <div id="toastContainer" class="fixed bottom-5 right-5 z-[60] flex flex-col gap-2 pointer-events-none"></div>
+
+    <script>
+        // --- UI 工具类 ---
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            const colors = {
+                success: 'bg-green-600', error: 'bg-red-600', info: 'bg-gray-800'
+            };
+            toast.className = `${colors[type]} text-white px-6 py-3 rounded-lg shadow-lg transform transition-all duration-300 translate-y-10 opacity-0 pointer-events-auto flex items-center gap-3`;
+            toast.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i> <span>${message}</span>`;
+
+            container.appendChild(toast);
+            setTimeout(() => { toast.classList.remove('translate-y-10', 'opacity-0'); }, 10);
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`tab-${tab}`).classList.remove('hidden');
+
+            // 更新导航栏样式
+            document.querySelectorAll('.nav-btn').forEach(btn => {
+                btn.classList.remove('bg-indigo-50', 'text-indigo-700');
+                btn.classList.add('text-gray-500');
+            });
+            const activeBtn = document.getElementById(`nav-${tab}`);
+            activeBtn.classList.remove('text-gray-500');
+            activeBtn.classList.add('bg-indigo-50', 'text-indigo-700');
+
+            if (tab === 'gallery') loadPeople();
+        }
+
+        function setLoading(btnId, isLoading, text) {
+            const btn = document.getElementById(btnId);
+            if (isLoading) {
+                btn.disabled = true;
+                btn.dataset.original = btn.innerHTML;
+                btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${text}`;
+                btn.classList.add('opacity-70', 'cursor-not-allowed');
+            } else {
+                btn.disabled = false;
+                btn.innerHTML = btn.dataset.original;
+                btn.classList.remove('opacity-70', 'cursor-not-allowed');
+            }
+        }
+
+        function formatTime(seconds) {
+            const d = new Date(seconds * 1000);
+            return d.toISOString().substr(11, 8); // 返回 HH:MM:SS
+        }
+
+        // --- 核心业务逻辑 ---
+
+        async function collect() {
+            const url = document.getElementById('ytUrl').value;
+            if (!url) return showToast("请输入有效的 YouTube 链接", "error");
+
+            setLoading('btnCollect', true, '任务已提交，后台处理中...');
+            showToast("采集任务已启动，请关注后台日志", "info");
+
+            try {
+                const res = await fetch(`/api/collect?url=${encodeURIComponent(url)}`, { method: 'POST' });
+                const d = await res.json();
+                showToast(d.msg, d.status === 'success' ? 'success' : 'error');
+            } catch (e) {
+                showToast("网络请求失败: " + e.message, "error");
+            } finally {
+                setLoading('btnCollect', false);
+            }
+        }
+
+        async function searchText() {
+            const q = document.getElementById('textQuery').value;
+            if (!q) return showToast("请输入搜索关键词", "error");
+
+            setLoading('btnText', true, '检索中...');
+            try {
+                const res = await fetch(`/api/search/text?q=${encodeURIComponent(q)}`);
+                const data = await res.json();
+                renderResults(data.status === 'success' ? data.results : []);
+            } catch (e) { showToast("检索失败", "error"); }
+            finally { setLoading('btnText', false); }
+        }
+
+        async function searchImage() {
+            const f = document.getElementById('fileInput').files[0];
+            if (!f) return showToast("请先选择图片文件", "error");
+
+            setLoading('btnImg', true, '特征提取与比对中...');
+            const fd = new FormData();
+            fd.append('file', f);
+            try {
+                const res = await fetch('/api/search/image', { method: 'POST', body: fd });
+                const data = await res.json();
+                renderResults(data.status === 'success' ? data.results : []);
+            } catch (e) { showToast("检索失败", "error"); }
+            finally { setLoading('btnImg', false); }
+        }
+
+        // --- 渲染与交互 ---
+
+        function renderResults(results) {
+            const container = document.getElementById('results');
+            const countSpan = document.getElementById('resultCount');
+            container.innerHTML = '';
+
+            if (!results || results.length === 0) {
+                container.innerHTML = '<div class="col-span-full text-center py-12 text-gray-500 bg-gray-50 rounded-xl border border-dashed border-gray-300">没有找到匹配的结果</div>';
+                countSpan.innerText = "0 个结果";
+                return;
+            }
+
+            countSpan.innerText = `找到 ${results.length} 个结果`;
+
+            results.forEach(item => {
+                // 如果后端没有传 video_id (旧数据)，设个默认值避免报错
+                if (!item.video_id) item.video_id = "未知";
+                if (!item.timestamp) item.timestamp = 0;
+
+                const div = document.createElement('div');
+                div.className = 'bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition cursor-pointer group';
+                // 【核心修改】点击整张卡片触发详情模态框
+                div.onclick = () => showDetailModal(item);
+
+                let scoreHtml = '';
+                if (item.score !== undefined) {
+                    scoreHtml = `<div class="absolute top-2 right-2 bg-black/70 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-md">相似度: ${(item.score).toFixed(3)}</div>`;
+                }
+
+                div.innerHTML = `
+                    <div class="relative h-40 overflow-hidden bg-gray-100">
+                        <img src="${item.image || item.image_path}" class="w-full h-full object-cover transition duration-300 group-hover:scale-110">
+                        ${scoreHtml}
+                        <div class="absolute inset-0 bg-indigo-600/0 group-hover:bg-indigo-600/10 transition flex items-center justify-center">
+                            <i class="fas fa-search-plus text-white text-3xl opacity-0 group-hover:opacity-100 transform scale-50 group-hover:scale-100 transition-all duration-300"></i>
+                        </div>
+                    </div>
+                    <div class="p-3">
+                        <p class="text-xs text-gray-600 line-clamp-2 h-8" title="${item.desc || item.description}">${item.desc || item.description}</p>
+                        <div class="mt-2 flex items-center justify-between text-[10px] text-gray-400">
+                            <span><i class="far fa-clock"></i> ${formatTime(item.timestamp)}</span>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        // --- 聚类相关 ---
+
+        async function runClustering() {
+            setLoading('btnCluster', true, 'AI 计算中...');
+            try {
+                const res = await fetch('/api/cluster/run', { method: 'POST' });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    showToast(`聚类完成！分类出 ${data.clusters_count} 个人物`, "success");
+                    loadPeople();
+                } else {
+                    showToast(data.message, "error");
+                }
+            } catch (e) { showToast("聚类失败", "error"); }
+            finally { setLoading('btnCluster', false); }
+        }
+
+        async function loadPeople() {
+            try {
+                const res = await fetch('/api/people');
+                if (!res.ok) {
+                    const errText = await res.text();
+                    console.error("后端接口异常:", res.status, errText);
+                    throw new Error(`服务器错误状态码: ${res.status}`);
+                }
+
+                const data = await res.json();
+
+                const grid = document.getElementById('peopleGrid');
+                const unassignedGrid = document.getElementById('unassignedGrid');
+
+                if (!grid) return;
+                grid.innerHTML = '';
+                if (unassignedGrid) unassignedGrid.innerHTML = '';
+
+                // 1. 渲染已归类人物
+                (data.people || []).forEach(p => {
+                    const div = document.createElement('div');
+                    div.className = 'bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-col items-center group transition-all hover:shadow-md';
+
+                    // 整个大卡片作为接收拖拽的“投放目标”
+                    div.ondragover = (e) => { e.preventDefault(); div.classList.add('ring-2', 'ring-indigo-500', 'bg-indigo-50'); };
+                    div.ondragleave = () => { div.classList.remove('ring-2', 'ring-indigo-500', 'bg-indigo-50'); };
+                    div.ondrop = (e) => handleDrop(e, p.person_id);
+
+                    const displayName = p.name || `人物 ${p.person_id}`;
+
+                    // 【核心修改】将 draggable="true" 加在头像外层的容器上，并绑定 source_person_id
+                    div.innerHTML = `
+                <div draggable="true" 
+                     ondragstart="event.dataTransfer.setData('source_person_id', '${p.person_id}'); event.currentTarget.classList.add('opacity-50')"
+                     ondragend="event.currentTarget.classList.remove('opacity-50')"
+                     class="relative w-20 h-20 rounded-full overflow-hidden mb-3 border-2 border-indigo-500 shadow-inner cursor-grab active:cursor-grabbing hover:scale-105 transition-transform">
+                    <img src="${p.cover_image}" draggable="false" class="w-full h-full object-cover" onclick="openTimelineModal(${p.person_id})">
+                </div>
+                <input type="text" value="${displayName}" 
+                    class="text-xs font-bold text-center bg-transparent border-b border-transparent hover:border-gray-300 focus:border-indigo-500 outline-none w-full py-1"
+                    onchange="renamePerson(${p.person_id}, this.value)">
+                <span class="text-[10px] bg-gray-100 px-2 py-0.5 rounded-full text-gray-500 mt-2">${p.count} 帧</span>
+            `;
+                    grid.appendChild(div);
+                });
+
+                // 2. 渲染未归类人脸
+                if (unassignedGrid) {
+                    (data.unassigned || []).forEach(face => {
+                        const img = document.createElement('img');
+                        img.src = face.image_path;
+                        img.className = 'w-16 h-16 object-cover rounded-lg cursor-grab active:cursor-grabbing border-2 border-white shadow-sm hover:scale-105 transition';
+                        img.draggable = true;
+                        img.ondragstart = (e) => {
+                            e.dataTransfer.setData("face_id", face.id);
+                            img.classList.add('opacity-50');
+                        };
+                        img.ondragend = () => img.classList.remove('opacity-50');
+                        unassignedGrid.appendChild(img);
+                    });
+                }
+            } catch (e) {
+                console.error("人物库加载逻辑崩溃:", e);
+                showToast("加载人物库失败，请按 F12 查看控制台报错", "error");
+            }
+        }
+        // 命名函数
+        async function renamePerson(id, newName) {
+            const res = await fetch('/api/person/rename', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ person_id: id, name: newName })
+            });
+            if (res.ok) showToast(`已更名为: ${newName}`);
+        }
+
+        // 拖拽落点处理
+        async function handleDrop(e, targetPersonId) {
+            e.preventDefault();
+            e.currentTarget.classList.remove('ring-2', 'ring-indigo-500', 'bg-indigo-50');
+
+            // 尝试获取两种不同的拖拽数据
+            const faceId = e.dataTransfer.getData("face_id");
+            const sourcePersonId = e.dataTransfer.getData("source_person_id");
+
+            // 场景 A：合并两个已聚类的人物
+            if (sourcePersonId) {
+                const sourceIdInt = parseInt(sourcePersonId);
+
+                if (sourceIdInt === targetPersonId) {
+                    showToast("不能将人物合并到自己身上", "warning");
+                    return;
+                }
+
+                // 高危操作，加一个确认框比较安全
+                if (!confirm(`确定要把人物 ${sourceIdInt} 的所有照片，都合并给人物 ${targetPersonId} 吗？合并后无法撤销。`)) {
+                    return;
+                }
+
+                const res = await fetch('/api/person/merge', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ source_person_id: sourceIdInt, target_person_id: targetPersonId })
+                });
+
+                if (res.ok) {
+                    showToast("人物合并成功");
+                    loadPeople();
+                } else {
+                    showToast("人物合并失败", "error");
+                }
+            }
+            // 场景 B：将单张未处理人脸归类到人物
+            else if (faceId) {
+                const res = await fetch('/api/face/reassign', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ face_id: parseInt(faceId), target_person_id: targetPersonId })
+                });
+
+                if (res.ok) {
+                    showToast("图片归类成功");
+                    loadPeople();
+                } else {
+                    showToast("归类失败", "error");
+                }
+            }
+            // 异常拦截
+            else {
+                showToast("无法识别的拖拽内容", "error");
+            }
+        }
+        // --- 弹窗控制逻辑 ---
+
+        // 1. 全局详情弹窗
+        function showDetailModal(item) {
+            const modal = document.getElementById('detailModal');
+            const card = document.getElementById('detailModalCard');
+
+            // 【修改点1】优先展示完整的视频大图
+            document.getElementById('modalImg').src = item.full_image || item.full_image_path || item.image || item.image_path;
+
+            document.getElementById('modalDesc').innerText = item.desc || item.description;
+            document.getElementById('modalFaceId').innerText = item.id;
+            document.getElementById('modalVideoId').innerText = item.video_id;
+            document.getElementById('modalTimeStr').innerText = formatTime(item.timestamp);
+
+            // 【修改点2】智能跨平台跳转逻辑
+            let sourceUrl = item.source_url || `https://youtube.com/watch?v=${item.video_id}`;
+            let t = Math.floor(item.timestamp || 0);
+            let finalUrl = sourceUrl;
+
+            if (sourceUrl.includes('bilibili.com')) {
+                // B站时间跳转使用 ?t=秒 或 &t=秒
+                finalUrl += sourceUrl.includes('?') ? `&t=${t}` : `?t=${t}`;
+            } else if (sourceUrl.includes('youtube.com') || sourceUrl.includes('youtu.be')) {
+                // YouTube 使用 &t=秒s 或 ?t=秒s
+                finalUrl += sourceUrl.includes('?') ? `&t=${t}s` : `?t=${t}s`;
+            }
+
+            document.getElementById('modalYtLink').href = finalUrl;
+            // 顺便把按钮文案改得更通用
+            document.getElementById('modalYtLink').innerHTML = `<i class="fas fa-external-link-alt text-lg"></i> 跳转到原视频该画面`;
+
+            // 分数处理
+            const scoreContainer = document.getElementById('modalScoreContainer');
+            if (item.score !== undefined) {
+                document.getElementById('modalScore').innerText = item.score.toFixed(4);
+                scoreContainer.classList.remove('hidden');
+            } else {
+                scoreContainer.classList.add('hidden');
+            }
+
+            modal.classList.remove('opacity-0', 'pointer-events-none');
+            setTimeout(() => {
+                card.classList.remove('scale-95');
+                card.classList.add('scale-100');
+            }, 10);
+        }
+
+        function closeDetailModal() {
+            const modal = document.getElementById('detailModal');
+            const card = document.getElementById('detailModalCard');
+            card.classList.remove('scale-100');
+            card.classList.add('scale-95');
+            setTimeout(() => {
+                modal.classList.add('opacity-0', 'pointer-events-none');
+            }, 200); // 等待动画结束
+        }
+
+        // 2. 时间轴弹窗 (聚类人物集合)
+        async function openTimelineModal(personId) {
+            const modal = document.getElementById('timelineModal');
+            const content = document.getElementById('timelineContent');
+            document.getElementById('timelineTitle').innerText = `人物档案 #${personId}`;
+            content.innerHTML = '<div class="flex justify-center py-10"><i class="fas fa-spinner fa-spin text-3xl text-indigo-500"></i></div>';
+
+            modal.classList.remove('opacity-0', 'pointer-events-none');
+            document.body.classList.add('modal-active');
+
+            try {
+                const res = await fetch(`/api/person/${personId}`);
+                if (!res.ok) throw new Error(await res.text());
+
+                const data = await res.json();
+                content.innerHTML = '';
+
+                if (!data.timeline || data.timeline.length === 0) {
+                    content.innerHTML = '<div class="text-center text-gray-500 py-10">该人物下暂无画面</div>';
+                    return;
+                }
+
+                const timelineWrapper = document.createElement('div');
+                timelineWrapper.className = 'relative border-l-2 border-indigo-200 ml-4 space-y-8 pb-8 mt-4';
+
+                data.timeline.forEach(item => {
+                    // 【防崩溃1】确保时间戳和链接存在默认值
+                    const timeStr = formatTime(item.timestamp || 0);
+                    let t = Math.floor(item.timestamp || 0);
+                    let sourceUrl = item.source_url || `https://youtube.com/watch?v=${item.video_id || ''}`;
+                    let ytUrl = sourceUrl;
+
+                    if (sourceUrl.includes('bilibili')) {
+                        ytUrl += sourceUrl.includes('?') ? `&t=${t}` : `?t=${t}`;
+                    } else if (sourceUrl.includes('youtube.com') || sourceUrl.includes('youtu.be')) {
+                        ytUrl += sourceUrl.includes('?') ? `&t=${t}s` : `?t=${t}s`;
+                    }
+
+                    const row = document.createElement('div');
+                    row.className = 'relative pl-6';
+
+                    // 【防崩溃2】优先使用完整图，如果没有则回退
+                    const coverImg = item.full_image_path || item.image_path || '';
+                    const descText = item.description || '暂无描述信息';
+                    const videoIdText = item.video_id || '未知来源';
+
+                    row.innerHTML = `
+                        <div class="absolute -left-[9px] top-1 w-4 h-4 rounded-full bg-indigo-500 border-4 border-white shadow"></div>
+                        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition cursor-pointer group flex flex-col sm:flex-row gap-4">
+                            <div class="w-full sm:w-48 h-32 flex-shrink-0 rounded-lg overflow-hidden bg-gray-100 relative">
+                                <img src="${coverImg}" class="w-full h-full object-cover">
+                                <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                                    <i class="fas fa-expand text-white text-xl"></i>
+                                </div>
+                            </div>
+                            
+                            <div class="flex-1 flex flex-col justify-between overflow-hidden">
+                                <div>
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <span class="bg-indigo-100 text-indigo-800 text-xs font-bold px-2 py-0.5 rounded flex-shrink-0"><i class="far fa-clock"></i> ${timeStr}</span>
+                                        <span class="text-xs text-gray-500 font-mono truncate"><i class="fas fa-video"></i> ${videoIdText}</span>
+                                    </div>
+                                    <p class="text-sm text-gray-700 line-clamp-2">${descText}</p>
+                                </div>
+                                <div class="mt-3 flex gap-2">
+                                    <a href="${ytUrl}" target="_blank" onclick="event.stopPropagation()" class="text-xs bg-red-50 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-md transition flex items-center gap-1 font-medium w-max">
+                                        <i class="fab fa-youtube"></i> 跳转视频
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    // 点击卡片也调用全局详情模态框
+                    row.querySelector('.bg-white').onclick = () => showDetailModal(item);
+                    timelineWrapper.appendChild(row);
+                });
+
+                content.appendChild(timelineWrapper);
+            } catch (e) {
+                console.error("加载档案失败:", e);
+                // 直接将真实错误打印
+                content.innerHTML = `<div class="text-center text-red-500 py-10 bg-red-50 rounded-xl border border-red-200">
+                    <i class="fas fa-exclamation-triangle text-2xl mb-2"></i><br>
+                    加载失败<br><span class="text-xs text-red-400 font-mono mt-2 block">${e.message}</span>
+                </div>`;
+            }
+        }
+
+        function closeTimelineModal() {
+            document.getElementById('timelineModal').classList.add('opacity-0', 'pointer-events-none');
+            document.body.classList.remove('modal-active');
+        }
+
+    </script>
+</body>
+
+</html>
