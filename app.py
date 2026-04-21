@@ -1,31 +1,39 @@
+import json
 import os
+import threading
+from contextlib import contextmanager
+from pathlib import Path
 
 import cv2
 import numpy as np
-from fastapi import BackgroundTasks, FastAPI, File, UploadFile
+from fastapi import BackgroundTasks, Body, FastAPI, File, UploadFile
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
+from core.alignment import align_text_to_timestamp, parse_srt_file, write_srt_file
 from core.analyzer import AIProcessor
-from core.clustering import perform_clustering
+from core.clustering import (
+    compare_image_search_metrics,
+    evaluate_clustering,
+    perform_clustering,
+)
 from core.collector import VideoCollector
+from core.config import app_config
 from core.database import DatabaseManager
 
 app = FastAPI(title="FaceRetriever 2026")
-
-TEXT_SEARCH_THRESHOLD = 0.15
-IMAGE_SEARCH_THRESHOLD = 0.4
-MAX_TEXT_RESULTS = 20
-MAX_IMAGE_RESULTS = 10
-
 
 db = DatabaseManager()
 ai_engine = AIProcessor()
 collector = VideoCollector()
 
-os.makedirs("storage/faces", exist_ok=True)
+_task_state = {"active": 0, "maintenance": False}
+_task_state_lock = threading.Lock()
+_task_local = threading.local()
+
 app.mount("/static", StaticFiles(directory="static"), name="static")
-app.mount("/faces", StaticFiles(directory="storage/faces"), name="faces")
+app.mount("/faces", StaticFiles(directory=str(app_config.faces_dir)), name="faces")
+app.mount("/content", StaticFiles(directory=str(app_config.content_dir)), name="content")
 
 
 @app.get("/")
@@ -34,65 +42,826 @@ def read_root():
         return HTMLResponse(f.read())
 
 
+def _safe_filename(name):
+    return "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "_" for ch in name)
+
+
+def _parse_sources(value):
+    if not value:
+        return []
+    if isinstance(value, list):
+        return value
+    try:
+        return json.loads(value)
+    except Exception:
+        return [part.strip() for part in str(value).split(",") if part.strip()]
+
+
+def _normalize_keywords(value):
+    if value is None:
+        return []
+    if isinstance(value, list):
+        raw = value
+    else:
+        raw = str(value).replace("，", ",").splitlines()
+    merged = []
+    for item in raw:
+        merged.extend(str(item).split(","))
+    keywords = []
+    for item in merged:
+        cleaned = str(item or "").strip()
+        if cleaned and cleaned not in keywords:
+            keywords.append(cleaned)
+    return keywords
+
+
+def _system_status_payload():
+    return {
+        "status": "success",
+        "cluster_config": app_config.cluster_defaults(),
+        "face_quality_config": app_config.face_quality_config(),
+        "has_cluster_snapshot": db.has_cluster_snapshot(),
+        "sources": db.list_collection_sources(),
+    }
+
+
+def _active_task_count():
+    with _task_state_lock:
+        return int(_task_state["active"])
+
+
+def _maintenance_active():
+    with _task_state_lock:
+        return bool(_task_state["maintenance"])
+
+
+def _maintenance_message():
+    return "System maintenance is in progress. Try again later."
+
+
+def _busy_message():
+    return "Background collection or processing is still running."
+
+
+def _runtime_blocked_response():
+    return {"status": "error", "message": _maintenance_message()}
+
+
+def _enter_task_scope():
+    depth = getattr(_task_local, "depth", 0)
+    if depth == 0:
+        with _task_state_lock:
+            _task_state["active"] += 1
+    _task_local.depth = depth + 1
+
+
+def _leave_task_scope():
+    depth = getattr(_task_local, "depth", 0)
+    if depth <= 1:
+        if hasattr(_task_local, "depth"):
+            delattr(_task_local, "depth")
+        with _task_state_lock:
+            _task_state["active"] = max(int(_task_state["active"]) - 1, 0)
+        return
+    _task_local.depth = depth - 1
+
+
+@contextmanager
+def _tracked_task():
+    _enter_task_scope()
+    try:
+        yield
+    finally:
+        _leave_task_scope()
+
+
+@contextmanager
+def _maintenance_guard():
+    with _task_state_lock:
+        if _task_state["maintenance"]:
+            raise RuntimeError(_maintenance_message())
+        if _task_state["active"] > 0:
+            raise RuntimeError(_busy_message())
+        _task_state["maintenance"] = True
+    try:
+        yield
+    finally:
+        with _task_state_lock:
+            _task_state["maintenance"] = False
+
+
+def _remove_runtime_storage():
+    removed_files_count = 0
+    for directory in app_config.managed_runtime_dirs():
+        directory.mkdir(parents=True, exist_ok=True)
+        paths = sorted(
+            directory.rglob("*"),
+            key=lambda item: len(item.parts),
+            reverse=True,
+        )
+        for path in paths:
+            try:
+                if path.is_file():
+                    path.unlink()
+                    removed_files_count += 1
+                elif path.is_dir():
+                    path.rmdir()
+            except OSError:
+                continue
+        directory.mkdir(parents=True, exist_ok=True)
+    return removed_files_count
+
+
+def _cookie_files():
+    return [
+        app_config.weibo_cookie_path,
+        app_config.storage_dir / "www.youtube.com_cookies.txt",
+    ]
+
+
+def _preserved_cookie_files(preserve_cookies):
+    if not preserve_cookies:
+        return []
+    return [str(path) for path in _cookie_files() if path.exists()]
+
+
+def _remove_cookie_files():
+    removed = 0
+    for path in _cookie_files():
+        if not path.exists() or not path.is_file():
+            continue
+        try:
+            path.unlink()
+            removed += 1
+        except OSError:
+            continue
+    return removed
+
+
+def _rebuild_runtime_state():
+    global db, collector
+    db = DatabaseManager()
+    collector = VideoCollector()
+
+
+def _validate_face_quality_payload(data):
+    try:
+        enabled = bool(data.get("enabled", True))
+        min_face_size = int(data.get("min_face_size"))
+        min_laplacian_var = float(data.get("min_laplacian_var"))
+        max_pose_deviation = float(data.get("max_pose_deviation"))
+    except (TypeError, ValueError):
+        raise ValueError("Invalid face quality parameters.")
+
+    if not 20 <= min_face_size <= 256:
+        raise ValueError("min_face_size must be between 20 and 256.")
+    if not 0 <= min_laplacian_var <= 1000:
+        raise ValueError("min_laplacian_var must be between 0 and 1000.")
+    if not 0.0 <= max_pose_deviation <= 1.0:
+        raise ValueError("max_pose_deviation must be between 0.0 and 1.0.")
+
+    return {
+        "enabled": enabled,
+        "min_face_size": min_face_size,
+        "min_laplacian_var": min_laplacian_var,
+        "max_pose_deviation": max_pose_deviation,
+    }
+
+
+def _serialize_face(record):
+    semantic_text = record.get("semantic_text") or record.get("description") or ""
+    timestamp = float(record.get("timestamp") or 0.0)
+    content_type = record.get("content_type") or "video"
+    return {
+        "id": record.get("id"),
+        "content_id": record.get("content_id"),
+        "content_type": content_type,
+        "platform": record.get("platform") or "",
+        "external_id": record.get("external_id") or record.get("video_id") or "",
+        "video_id": record.get("video_id") or record.get("external_id") or "",
+        "timestamp": timestamp,
+        "image": record.get("image_path"),
+        "image_path": record.get("image_path"),
+        "full_image": record.get("full_image_path"),
+        "full_image_path": record.get("full_image_path"),
+        "source_url": record.get("source_url") or "",
+        "desc": semantic_text,
+        "description": semantic_text,
+        "visual_text": record.get("visual_text") or "",
+        "subtitle_text": record.get("subtitle_text") or "",
+        "asr_text": record.get("asr_text") or "",
+        "speech_text": record.get("subtitle_text") or record.get("asr_text") or "",
+        "post_text": record.get("post_text") or "",
+        "semantic_text": semantic_text,
+        "semantic_source": _parse_sources(record.get("semantic_source")),
+        "person_id": record.get("person_id"),
+        "cluster_config": app_config.cluster_defaults(),
+        "score": record.get("score"),
+        "metric": record.get("metric"),
+        "distance": record.get("distance"),
+        "link_url": record.get("link_url") or _get_source_link(record),
+    }
+
+
+def _get_source_link(item):
+    source_url = item.get("source_url") or ""
+    if not source_url:
+        return ""
+
+    if item.get("content_type") != "video":
+        return source_url
+
+    timestamp = int(float(item.get("timestamp") or 0.0))
+    if "bilibili.com" in source_url:
+        connector = "&" if "?" in source_url else "?"
+        return f"{source_url}{connector}t={timestamp}"
+    if "youtube.com" in source_url or "youtu.be" in source_url:
+        connector = "&" if "?" in source_url else "?"
+        return f"{source_url}{connector}t={timestamp}s"
+    return source_url
+
+
+def _find_best_subtitle_path(video_info):
+    subtitle_path = video_info.get("subtitle_path") or ""
+    if subtitle_path and os.path.exists(subtitle_path):
+        return subtitle_path
+
+    video_path = video_info.get("path") or ""
+    if not video_path:
+        return ""
+
+    base = os.path.splitext(video_path)[0]
+    candidates = sorted(Path(video_path).parent.glob(f"{Path(base).name}*.srt"))
+    return str(candidates[0]) if candidates else ""
+
+
 def process_video_task(video_info):
-    cap = cv2.VideoCapture(video_info["path"])
-    fps = cap.get(cv2.CAP_PROP_FPS) or 0
-    if fps <= 0:
-        fps = 25
+    with _tracked_task():
+        if _maintenance_active():
+            return
 
-    frame_interval = max(int(fps * 2), 1)
-    count = 0
-    frame_id = 0
+        content_id = video_info["content_id"]
+        subtitle_path = _find_best_subtitle_path(video_info)
+        if subtitle_path:
+            db.update_content_paths(content_id, subtitle_path=subtitle_path)
 
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
+        subtitle_segments = parse_srt_file(subtitle_path)
+        asr_segments = []
+        asr_path = ""
+        if not subtitle_segments:
+            asr_segments = ai_engine.transcribe_video(video_info["path"])
+            if asr_segments:
+                asr_path = str(
+                    app_config.asr_dir / f"{_safe_filename(video_info['external_id'])}.srt"
+                )
+                write_srt_file(asr_segments, asr_path)
+                db.update_content_paths(content_id, asr_path=asr_path)
 
-        if count % frame_interval == 0:
-            results = ai_engine.process_frame(frame)
-            if results:
-                full_filename = f"{video_info['id']}_{frame_id}_full.jpg"
-                full_frame = results[0]["full_frame"]
+        cap = cv2.VideoCapture(video_info["path"])
+        fps = cap.get(cv2.CAP_PROP_FPS) or 0
+        if fps <= 0:
+            fps = 25
 
-                if full_frame.shape[1] > 1280:
-                    full_frame = cv2.resize(
-                        full_frame,
-                        (1280, int(1280 * full_frame.shape[0] / full_frame.shape[1])),
+        frame_interval = max(int(fps * app_config.frame_sample_seconds), 1)
+        count = 0
+        frame_id = 0
+
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            if count % frame_interval == 0:
+                timestamp = count / fps
+                subtitle_text = align_text_to_timestamp(
+                    subtitle_segments,
+                    timestamp,
+                    tolerance=app_config.subtitle_tolerance_seconds,
+                )
+                asr_text = ""
+                if not subtitle_text:
+                    asr_text = align_text_to_timestamp(
+                        asr_segments,
+                        timestamp,
+                        tolerance=app_config.subtitle_tolerance_seconds,
                     )
-                cv2.imwrite(os.path.join("storage/faces", full_filename), full_frame)
 
-                for i, face_data in enumerate(results):
-                    face_filename = f"{video_info['id']}_{frame_id}_face_{i}.jpg"
-                    cv2.imwrite(
-                        os.path.join("storage/faces", face_filename),
-                        face_data["face_img"],
+                results = ai_engine.process_frame(
+                    frame,
+                    subtitle_text=subtitle_text,
+                    asr_text=asr_text,
+                )
+                if results:
+                    full_filename = (
+                        f"{_safe_filename(video_info['external_id'])}_{frame_id}_full.jpg"
                     )
-                    db.add_face(
-                        video_id=video_info["id"],
-                        timestamp=count / fps,
-                        image_path=f"/faces/{face_filename}",
-                        full_image_path=f"/faces/{full_filename}",
-                        source_url=video_info.get("url", ""),
-                        embedding=face_data["embedding"],
-                        description=face_data["description"],
-                    )
+                    full_frame = results[0]["full_frame"]
 
-        count += 1
-        frame_id += 1
+                    if full_frame.shape[1] > 1280:
+                        full_frame = cv2.resize(
+                            full_frame,
+                            (
+                                1280,
+                                int(1280 * full_frame.shape[0] / full_frame.shape[1]),
+                            ),
+                        )
 
-    cap.release()
+                    cv2.imwrite(str(app_config.faces_dir / full_filename), full_frame)
+                    full_web_path = f"/faces/{full_filename}"
+
+                    for index, face_data in enumerate(results):
+                        face_filename = (
+                            f"{_safe_filename(video_info['external_id'])}_{frame_id}_face_{index}.jpg"
+                        )
+                        face_path = app_config.faces_dir / face_filename
+                        cv2.imwrite(str(face_path), face_data["face_img"])
+
+                        db.add_face(
+                            content_id=content_id,
+                            content_type="video",
+                            platform=video_info.get("platform", ""),
+                            external_id=video_info.get("external_id", ""),
+                            video_id=video_info.get("external_id", ""),
+                            timestamp=timestamp,
+                            image_path=f"/faces/{face_filename}",
+                            full_image_path=full_web_path,
+                            source_url=video_info.get("url", ""),
+                            embedding=face_data["embedding"],
+                            description=face_data["semantic_text"],
+                            visual_text=face_data["visual_text"],
+                            subtitle_text=face_data["subtitle_text"],
+                            asr_text=face_data["asr_text"],
+                            post_text="",
+                            semantic_text=face_data["semantic_text"],
+                            semantic_source=face_data["semantic_source"],
+                        )
+
+            count += 1
+            frame_id += 1
+
+        cap.release()
+        db.update_content_paths(content_id, local_path=video_info["path"])
+
+
+def process_post_task(post_info):
+    with _tracked_task():
+        if _maintenance_active():
+            return
+
+        content_id = post_info["content_id"]
+        post_text = post_info.get("post_text", "")
+        images = post_info.get("images", [])
+
+        for index, image_item in enumerate(images):
+            image = cv2.imread(image_item["local_path"])
+            if image is None:
+                continue
+
+            results = ai_engine.process_image(image, post_text=post_text)
+            if not results:
+                continue
+
+            for face_index, face_data in enumerate(results):
+                face_filename = (
+                    f"{_safe_filename(post_info['external_id'])}_{index}_face_{face_index}.jpg"
+                )
+                cv2.imwrite(
+                    str(app_config.faces_dir / face_filename),
+                    face_data["face_img"],
+                )
+                db.add_face(
+                    content_id=content_id,
+                    content_type="post",
+                    platform=post_info.get("platform", "weibo"),
+                    external_id=post_info.get("external_id", ""),
+                    video_id=post_info.get("external_id", ""),
+                    timestamp=float(index),
+                    image_path=f"/faces/{face_filename}",
+                    full_image_path=image_item["web_path"],
+                    source_url=post_info.get("url", ""),
+                    embedding=face_data["embedding"],
+                    description=face_data["semantic_text"],
+                    visual_text=face_data["visual_text"],
+                    subtitle_text="",
+                    asr_text="",
+                    post_text=face_data["post_text"],
+                    semantic_text=face_data["semantic_text"],
+                    semantic_source=face_data["semantic_source"],
+                )
+
+        db.update_content_paths(content_id, post_text=post_text)
+
+
+def sync_weibo_source_task(source_record, limit):
+    metadata = source_record.get("metadata", {})
+    keywords = _normalize_keywords(metadata.get("keywords", []))
+    fetched = collector.fetch_source_entries(
+        source_record["source_url"],
+        limit=limit,
+        platform="weibo",
+        source_type="weibo_user",
+        metadata={"keywords": keywords},
+    )
+
+    imported_count = 0
+    duplicate_count = 0
+    failed_count = 0
+    for entry in fetched["entries"]:
+        existing = db.get_content_by_identity(entry["platform"], entry["external_id"])
+        if existing:
+            duplicate_count += 1
+            continue
+
+        content_metadata = dict(entry.get("metadata") or {})
+        content_metadata["source_sync_url"] = source_record["source_url"]
+        content = db.upsert_content(
+            platform=entry["platform"],
+            external_id=entry["external_id"],
+            content_type="post",
+            title=entry["title"],
+            source_url=entry["url"],
+            post_text=entry["post_text"],
+            metadata=content_metadata,
+            collection_source_id=source_record["id"],
+        )
+        try:
+            images = collector.download_post_images(
+                entry["platform"],
+                entry["external_id"],
+                entry["image_urls"],
+                request_headers=collector.get_platform_request_headers(
+                    entry["platform"],
+                    referer=entry["url"],
+                ),
+            )
+        except Exception:
+            failed_count += 1
+            continue
+
+        if not images:
+            failed_count += 1
+            continue
+
+        process_post_task(
+            {
+                "content_id": content["id"],
+                "platform": entry["platform"],
+                "external_id": entry["external_id"],
+                "post_text": entry["post_text"],
+                "url": entry["url"],
+                "images": images,
+            }
+        )
+        imported_count += 1
+
+    sync_stats = {
+        **fetched.get("stats", {}),
+        "imported_count": imported_count,
+        "duplicate_count": duplicate_count,
+        "failed_count": failed_count,
+    }
+    db.mark_source_synced(
+        source_record["id"],
+        title=fetched.get("title") or source_record.get("title", ""),
+        metadata={
+            "keywords": keywords,
+            "limit": int(limit),
+            "user_id": fetched.get("user_id", ""),
+            "last_seen_post_id": fetched.get("cursor", {}).get("last_seen_post_id", ""),
+            "last_seen_publish_time": fetched.get("cursor", {}).get(
+                "last_seen_publish_time", ""
+            ),
+            "last_sync_stats": sync_stats,
+        },
+    )
+    return {
+        "platform": "weibo",
+        "title": fetched.get("title") or source_record.get("title", ""),
+        "stats": sync_stats,
+    }
+
+
+def sync_source_task(source_record, limit):
+    with _tracked_task():
+        if _maintenance_active():
+            return {
+                "status": "error",
+                "message": _maintenance_message(),
+            }
+
+        if (
+            source_record.get("platform") == "weibo"
+            and source_record.get("source_type") == "weibo_user"
+        ):
+            return sync_weibo_source_task(source_record, limit)
+
+        fetched = collector.fetch_source_entries(source_record["source_url"], limit=limit)
+        duplicate_count = 0
+        imported_count = 0
+        for entry in fetched["entries"]:
+            existing = db.get_content_by_identity(entry["platform"], entry["external_id"])
+            if existing and db.content_has_faces(existing["id"]):
+                duplicate_count += 1
+                continue
+
+            info = collector.download(entry["url"])
+            content = db.upsert_content(
+                platform=info["platform"],
+                external_id=info["external_id"],
+                content_type="video",
+                title=info["title"],
+                source_url=info["url"],
+                local_path=info["path"],
+                subtitle_path=info.get("subtitle_path", ""),
+                metadata={"source_sync_url": source_record["source_url"]},
+                collection_source_id=source_record["id"],
+            )
+            if db.content_has_faces(content["id"]):
+                duplicate_count += 1
+                continue
+
+            info["content_id"] = content["id"]
+            process_video_task(info)
+            imported_count += 1
+
+        db.mark_source_synced(
+            source_record["id"],
+            title=fetched.get("title") or source_record.get("title", ""),
+        )
+        return {
+            "platform": fetched.get("platform", source_record.get("platform", "")),
+            "title": fetched.get("title") or source_record.get("title", ""),
+            "stats": {
+                "fetched_count": len(fetched["entries"]),
+                "matched_count": len(fetched["entries"]),
+                "imported_count": imported_count,
+                "duplicate_count": duplicate_count,
+                "filtered_count": 0,
+            },
+        }
+
+
+@app.get("/api/system/status")
+async def system_status():
+    return _system_status_payload()
+
+
+@app.post("/api/system/face-quality")
+async def update_face_quality(data: dict = Body(default={})):
+    try:
+        payload = _validate_face_quality_payload(data)
+        app_config.update_face_quality(**payload)
+        return {
+            "status": "success",
+            "face_quality_config": app_config.face_quality_config(),
+        }
+    except ValueError as exc:
+        return {"status": "error", "message": str(exc)}
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
 
 
 @app.post("/api/collect")
 async def collect_video(url: str, background_tasks: BackgroundTasks):
+    if _maintenance_active():
+        return _runtime_blocked_response()
+
     try:
         info = collector.download(url)
+        content = db.upsert_content(
+            platform=info["platform"],
+            external_id=info["external_id"],
+            content_type="video",
+            title=info["title"],
+            source_url=info["url"],
+            local_path=info["path"],
+            subtitle_path=info.get("subtitle_path", ""),
+            metadata={"download_url": url},
+        )
+        info["content_id"] = content["id"]
+
+        if db.content_has_faces(content["id"]):
+            return {
+                "status": "success",
+                "msg": "Content already exists, skipping duplicate processing.",
+                "video": info["title"],
+                "duplicate": True,
+            }
+
         background_tasks.add_task(process_video_task, info)
         return {
             "status": "success",
-            "msg": "Video downloaded, processing in background",
+            "msg": "Video downloaded, semantic processing started in background.",
             "video": info["title"],
+        }
+    except Exception as e:
+        return {"status": "error", "msg": str(e)}
+
+
+@app.post("/api/collect/source")
+async def collect_source(
+    background_tasks: BackgroundTasks,
+    data: dict = Body(default={}),
+):
+    if _maintenance_active():
+        return _runtime_blocked_response()
+
+    try:
+        source_url = data.get("source_url", "").strip()
+        platform = data.get("platform") or collector.detect_platform(source_url)
+        source_type = data.get("source_type") or (
+            "weibo_user" if platform == "weibo" else "channel"
+        )
+        limit_default = (
+            app_config.weibo_source_sync_limit
+            if platform == "weibo"
+            else app_config.source_sync_limit
+        )
+        limit = int(data.get("limit") or limit_default)
+        keywords = _normalize_keywords(data.get("keywords", []))
+        if not source_url:
+            return {"status": "error", "msg": "Missing source_url"}
+
+        source_url = collector.normalize_source_url(
+            source_url,
+            platform=platform,
+            source_type=source_type,
+        )
+
+        source_record = db.register_collection_source(
+            platform=platform,
+            source_type=source_type,
+            source_url=source_url,
+            title=data.get("title", ""),
+            metadata={
+                "keywords": keywords,
+                "limit": limit,
+            },
+        )
+        if platform == "weibo" and source_type == "weibo_user":
+            sync_result = sync_source_task(source_record, limit)
+            if sync_result.get("status") == "error":
+                return sync_result
+            return {
+                "status": "success",
+                "msg": "Weibo user sync completed.",
+                "source": db.get_collection_source(source_record["id"]),
+                "sync_stats": sync_result.get("stats", {}),
+            }
+
+        background_tasks.add_task(sync_source_task, source_record, limit)
+        return {
+            "status": "success",
+            "msg": "Source sync scheduled in background.",
+            "source": source_record,
+        }
+    except Exception as e:
+        return {"status": "error", "msg": str(e)}
+
+
+@app.get("/api/sources")
+async def get_sources():
+    return {"status": "success", "sources": db.list_collection_sources()}
+
+
+@app.post("/api/source/delete")
+async def delete_source(data: dict = Body(default={})):
+    source_id = data.get("source_id")
+    delete_data = bool(data.get("delete_data"))
+    if source_id is None:
+        return {"status": "error", "message": "Missing source_id"}
+
+    try:
+        source_id = int(source_id)
+        with _maintenance_guard():
+            source = db.get_collection_source(source_id)
+            if source is None:
+                return {"status": "error", "message": "Collection source not found."}
+
+            if delete_data:
+                result = db.delete_source_with_data(source_id)
+            else:
+                deleted_source = db.delete_collection_source(source_id)
+                result = {
+                    "source": source,
+                    "deleted_source": deleted_source,
+                    "deleted_contents": 0,
+                    "deleted_faces": 0,
+                    "deleted_people": 0,
+                    "deleted_files": 0,
+                    "cleared_cluster_snapshot": False,
+                    "unresolved_legacy_items": 0,
+                }
+
+        return {
+            "status": "success",
+            **result,
+            "cluster_config": app_config.cluster_defaults(),
+            "face_quality_config": app_config.face_quality_config(),
+            "has_cluster_snapshot": db.has_cluster_snapshot(),
+            "sources": db.list_collection_sources(),
+        }
+    except RuntimeError as exc:
+        return {"status": "error", "message": str(exc)}
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+
+@app.post("/api/system/reset")
+async def reset_system(data: dict = Body(default={})):
+    preserve_cookies = bool(data.get("preserve_cookies", True))
+    try:
+        with _maintenance_guard():
+            preserved_files = _preserved_cookie_files(preserve_cookies)
+            removed_files_count = _remove_runtime_storage()
+            if not preserve_cookies:
+                removed_files_count += _remove_cookie_files()
+            removed_files_count += db.reset_database_state()
+            app_config.reset_to_defaults()
+            _rebuild_runtime_state()
+
+        return {
+            "status": "success",
+            "reset": True,
+            "preserved_files": preserved_files,
+            "removed_files_count": removed_files_count,
+            "cluster_config": app_config.cluster_defaults(),
+            "face_quality_config": app_config.face_quality_config(),
+            "has_cluster_snapshot": db.has_cluster_snapshot(),
+            "sources": db.list_collection_sources(),
+        }
+    except RuntimeError as exc:
+        return {"status": "error", "message": str(exc)}
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+
+@app.post("/api/import/post")
+async def import_post(
+    background_tasks: BackgroundTasks,
+    data: dict = Body(default={}),
+):
+    if _maintenance_active():
+        return _runtime_blocked_response()
+
+    try:
+        url = data.get("url", "").strip()
+        provided_text = data.get("post_text", "").strip()
+        image_urls = [
+            item.strip() for item in data.get("image_urls", []) if item.strip()
+        ]
+        platform = data.get("platform") or collector.detect_platform(
+            url or "https://weibo.com"
+        )
+
+        extracted = collector.extract_post_metadata(url) if url else {}
+        external_id = (
+            data.get("external_id")
+            or extracted.get("external_id")
+            or collector.derive_external_id(url, provided_text or json.dumps(image_urls))
+        )
+        post_text = provided_text or extracted.get("post_text", "")
+        merged_image_urls = image_urls or extracted.get("image_urls", [])
+
+        if not merged_image_urls:
+            return {
+                "status": "error",
+                "msg": "No image URLs were provided or extracted.",
+            }
+
+        content = db.upsert_content(
+            platform=platform,
+            external_id=external_id,
+            content_type="post",
+            title=data.get("title") or extracted.get("title", ""),
+            source_url=url or extracted.get("source_url", ""),
+            post_text=post_text,
+            metadata={"import_mode": "post"},
+        )
+
+        if db.content_has_faces(content["id"]):
+            return {
+                "status": "success",
+                "msg": "Post already exists, skipping duplicate processing.",
+                "duplicate": True,
+            }
+
+        images = collector.download_post_images(platform, external_id, merged_image_urls)
+        background_tasks.add_task(
+            process_post_task,
+            {
+                "content_id": content["id"],
+                "platform": platform,
+                "external_id": external_id,
+                "post_text": post_text,
+                "url": url or extracted.get("source_url", ""),
+                "images": images,
+            },
+        )
+        return {
+            "status": "success",
+            "msg": "Post import scheduled in background.",
+            "images": len(images),
         }
     except Exception as e:
         return {"status": "error", "msg": str(e)}
@@ -108,34 +877,29 @@ async def search_by_text(q: str):
     if not all_records:
         return {"status": "success", "results": []}
 
-    descriptions = [record.get("description", "") for record in all_records]
+    descriptions = [
+        record.get("semantic_text") or record.get("description", "")
+        for record in all_records
+    ]
     ranked = ai_engine.rank_texts_by_similarity(query, descriptions)
 
     search_results = []
     for index, similarity in ranked:
-        if similarity < TEXT_SEARCH_THRESHOLD:
+        if similarity < app_config.text_threshold:
             continue
 
-        record = all_records[index]
-        search_results.append(
-            {
-                "id": record.get("id"),
-                "image": record.get("image_path"),
-                "full_image": record.get("full_image_path"),
-                "source_url": record.get("source_url"),
-                "video_id": record.get("video_id"),
-                "timestamp": record.get("timestamp"),
-                "desc": record.get("description", ""),
-                "score": round(float(similarity), 4),
-            }
-        )
+        record = dict(all_records[index])
+        record["score"] = round(float(similarity), 4)
+        record["metric"] = "semantic"
+        record["link_url"] = _get_source_link(record)
+        search_results.append(_serialize_face(record))
 
     search_results.sort(key=lambda item: item["score"], reverse=True)
-    return {"status": "success", "results": search_results[:MAX_TEXT_RESULTS]}
+    return {"status": "success", "results": search_results[: app_config.text_top_k]}
 
 
 @app.post("/api/search/image")
-async def search_image(file: UploadFile = File(...)):
+async def search_image(metric: str = "cosine", file: UploadFile = File(...)):
     try:
         contents = await file.read()
         nparr = np.frombuffer(contents, np.uint8)
@@ -144,64 +908,146 @@ async def search_image(file: UploadFile = File(...)):
         if img is None:
             return {"status": "error", "message": "Invalid image file"}
 
-        target_embedding, _ = ai_engine.get_face_embedding(img)
+        target_embedding, _ = ai_engine.get_face_embedding(
+            img,
+            face_quality_config={"enabled": False},
+        )
         if target_embedding is None:
             return {"status": "error", "message": "No face detected"}
 
-        matches = db.search_faces_by_embedding(
-            target_embedding,
-            top_k=MAX_IMAGE_RESULTS,
-            min_score=IMAGE_SEARCH_THRESHOLD,
-        )
-        results = [
-            {
-                "id": face["id"],
-                "video_id": face["video_id"],
-                "timestamp": face["timestamp"],
-                "image": face["image_path"],
-                "full_image": face["full_image_path"],
-                "source_url": face["source_url"],
-                "desc": face["description"],
-                "score": round(float(face["score"]), 4),
-            }
-            for face in matches
-        ]
-        return {"status": "success", "results": results}
+        if metric.lower() == "euclidean":
+            matches = db.search_faces_by_metric(
+                target_embedding,
+                metric="euclidean",
+                top_k=app_config.image_top_k,
+            )
+        else:
+            matches = db.search_faces_by_embedding(
+                target_embedding,
+                top_k=app_config.image_top_k,
+                min_score=app_config.image_cosine_threshold,
+            )
 
+        results = []
+        for face in matches:
+            face["link_url"] = _get_source_link(face)
+            results.append(_serialize_face(face))
+
+        return {"status": "success", "metric": metric.lower(), "results": results}
     except Exception as e:
-        import traceback
-
-        traceback.print_exc()
         return {"status": "error", "message": str(e)}
 
 
 @app.post("/api/cluster/run")
-async def run_clustering():
+async def run_clustering(data: dict = Body(default={})):
     try:
-        result = perform_clustering(db)
+        previous_config = app_config.cluster_defaults()
+        algorithm = data.get("algorithm", previous_config["algorithm"])
+        metric = data.get("metric", previous_config["metric"])
+        eps = float(data.get("eps", previous_config["eps"]))
+        min_samples = int(data.get("min_samples", previous_config["min_samples"]))
+        mode = data.get("mode", "incremental")
+        app_config.update_cluster_defaults(
+            algorithm=algorithm,
+            metric=metric,
+            eps=eps,
+            min_samples=min_samples,
+        )
+        result = perform_clustering(
+            db,
+            algorithm=algorithm,
+            metric=metric,
+            eps=eps,
+            min_samples=min_samples,
+            mode=mode,
+            snapshot_config=previous_config,
+        )
+        if result.get("status") == "success":
+            result["has_cluster_snapshot"] = db.has_cluster_snapshot()
         return result
     except Exception as e:
-        import traceback
+        return {"status": "error", "message": str(e)}
 
-        traceback.print_exc()
+
+@app.post("/api/cluster/rollback")
+async def rollback_clustering():
+    try:
+        restored = db.restore_cluster_snapshot()
+        if restored is None:
+            return {"status": "error", "message": "No cluster snapshot available."}
+
+        snapshot_config = restored.get("cluster_config") or {}
+        if snapshot_config:
+            app_config.update_cluster_defaults(
+                algorithm=snapshot_config.get("algorithm"),
+                metric=snapshot_config.get("metric"),
+                eps=snapshot_config.get("eps"),
+                min_samples=snapshot_config.get("min_samples"),
+            )
+
+        return {
+            "status": "success",
+            "restored_faces": restored.get("restored_faces", 0),
+            "restored_people": restored.get("restored_people", 0),
+            "cluster_config": app_config.cluster_defaults(),
+            "has_cluster_snapshot": db.has_cluster_snapshot(),
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+@app.post("/api/cluster/evaluate")
+async def cluster_evaluation(data: dict = Body(default={})):
+    try:
+        defaults = app_config.cluster_defaults()
+        eps = float(data.get("eps", defaults["eps"]))
+        min_samples = int(data.get("min_samples", defaults["min_samples"]))
+        algorithms = data.get("algorithms") or ["dbscan", "hdbscan", "optics"]
+        metrics = data.get("metrics") or ["cosine", "euclidean"]
+        cluster_results = evaluate_clustering(
+            db,
+            algorithms=algorithms,
+            metrics=metrics,
+            eps=eps,
+            min_samples=min_samples,
+        )
+        image_results = compare_image_search_metrics(db, top_k=5)
+        return {
+            "status": "success",
+            "cluster_results": cluster_results.get("results", []),
+            "image_results": image_results.get("results", []),
+        }
+    except Exception as e:
         return {"status": "error", "message": str(e)}
 
 
 @app.get("/api/people")
 async def get_people():
     people = db.get_clustered_people()
-    unassigned = db.get_unassigned_faces()
-    return {"status": "success", "people": people, "unassigned": unassigned}
+    unassigned = [_serialize_face(face) for face in db.get_unassigned_faces()]
+    return {
+        "status": "success",
+        "people": people,
+        "unassigned": unassigned,
+        "cluster_config": app_config.cluster_defaults(),
+        "has_cluster_snapshot": db.has_cluster_snapshot(),
+    }
 
 
 @app.get("/api/person/{person_id}")
 async def get_person_details(person_id: int):
-    timeline = db.get_person_timeline(person_id)
-    return {"status": "success", "timeline": timeline}
+    timeline = [_serialize_face(item) for item in db.get_person_timeline(person_id)]
+    for item in timeline:
+        item["link_url"] = _get_source_link(item)
+    return {
+        "status": "success",
+        "timeline": timeline,
+        "cluster_config": app_config.cluster_defaults(),
+    }
 
 
 @app.post("/api/person/rename")
-async def rename_person(data: dict):
+async def rename_person(data: dict = Body(default={})):
     person_id = data.get("person_id")
     new_name = data.get("name")
     if person_id is None or not new_name:
@@ -212,7 +1058,7 @@ async def rename_person(data: dict):
 
 
 @app.post("/api/face/reassign")
-async def reassign_face(data: dict):
+async def reassign_face(data: dict = Body(default={})):
     face_id = data.get("face_id")
     target_person_id = data.get("target_person_id")
     if face_id is None or target_person_id is None:
@@ -223,7 +1069,7 @@ async def reassign_face(data: dict):
 
 
 @app.post("/api/person/merge")
-async def merge_person(data: dict):
+async def merge_person(data: dict = Body(default={})):
     source_id = data.get("source_person_id")
     target_id = data.get("target_person_id")
     if source_id is None or target_id is None:

@@ -1,689 +1,839 @@
-<!DOCTYPE html>
-<html>
-
+<!doctype html>
+<html lang="zh-CN">
 <head>
-    <title>社交媒体人脸数据采集与智能检索系统</title>
-    <meta charset="utf-8">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <style>
-        .modal-active {
-            overflow: hidden;
-        }
-
-        .transition-all {
-            transition-property: all;
-            transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-            transition-duration: 300ms;
-        }
-
-        /* 自定义滚动条 */
-        ::-webkit-scrollbar {
-            width: 6px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: #f1f1f1;
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: #c7c7c7;
-            border-radius: 4px;
-        }
-
-        ::-webkit-scrollbar-thumb:hover {
-            background: #a0a0a0;
-        }
-    </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Face System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Noto+Sans+SC:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root{--ink:#102133;--card:rgba(255,255,255,.88);--line:rgba(16,33,51,.08)}
+    body{font-family:"Noto Sans SC",sans-serif;color:var(--ink);background:radial-gradient(circle at top left,rgba(15,118,110,.14),transparent 30%),radial-gradient(circle at top right,rgba(217,119,6,.16),transparent 28%),linear-gradient(135deg,#ecfeff,#fff 42%,#fff7ed)}
+    h1,h2,h3,.ui{font-family:"Space Grotesk","Noto Sans SC",sans-serif}
+    .glass{background:var(--card);border:1px solid var(--line);backdrop-filter:blur(12px)}
+    .tab.active{background:#102133;color:#fff}
+    .modal-open{overflow:hidden}
+  </style>
 </head>
-
-<body class="bg-slate-50 text-gray-800 min-h-screen font-sans">
-
-    <nav class="bg-white shadow-sm sticky top-0 z-40">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-16 items-center">
-                <div class="flex-shrink-0 flex items-center gap-2">
-                    <i class="fas fa-robot text-indigo-600 text-2xl"></i>
-                    <span class="font-bold text-xl tracking-tight">社交媒体人脸数据采集与智能检索系统</span>
-                </div>
-                <div class="flex space-x-2">
-                    <button onclick="switchTab('search')" id="nav-search"
-                        class="nav-btn px-4 py-2 rounded-md font-medium bg-indigo-50 text-indigo-700 transition">
-                        <i class="fas fa-search mr-1"></i> 检索与采集
-                    </button>
-                    <button onclick="switchTab('gallery')" id="nav-gallery"
-                        class="nav-btn px-4 py-2 rounded-md font-medium text-gray-500 hover:bg-gray-50 transition">
-                        <i class="fas fa-users mr-1"></i> 聚类人物库
-                    </button>
-                </div>
-            </div>
+<body class="min-h-screen">
+  <div class="mx-auto max-w-7xl px-4 py-6 md:px-6">
+    <header class="glass rounded-3xl px-6 py-5 shadow-sm">
+      <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p class="ui text-sm uppercase tracking-[0.25em] text-teal-700">FaceRetriever 2026</p>
+          <h1 class="ui mt-2 text-3xl font-bold">社交媒体人脸采集、语义融合与检索</h1>
+          <p class="mt-2 text-sm text-slate-600">支持字幕对齐、离线 ASR、账号增量同步、图文导入与聚类评估。</p>
         </div>
-    </nav>
+        <div class="flex gap-2">
+          <button id="nav-search" class="tab active rounded-full px-4 py-2 text-sm" onclick="switchTab('search')">采集与检索</button>
+          <button id="nav-gallery" class="tab rounded-full px-4 py-2 text-sm" onclick="switchTab('gallery')">聚类与人物库</button>
+        </div>
+      </div>
+    </header>
 
-    <main class="max-w-7xl mx-auto p-6 mt-4">
-
-        <div id="tab-search" class="tab-content space-y-6">
-
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                <h2 class="text-lg font-bold mb-4 flex items-center gap-2"><i class="fab fa-youtube text-red-500"></i>
-                    数据采集</h2>
-                <div class="flex gap-3">
-                    <input id="ytUrl" type="text" placeholder="输入视频链接"
-                        class="border border-gray-300 px-4 py-2 flex-1 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none transition">
-                    <button onclick="collect()" id="btnCollect"
-                        class="bg-gray-900 text-white px-6 py-2 rounded-lg hover:bg-gray-800 shadow-sm transition flex items-center gap-2">
-                        <i class="fas fa-cloud-download-alt"></i> 开始处理
-                    </button>
-                </div>
+    <main class="mt-6 space-y-6">
+      <section id="tab-search" class="space-y-6">
+        <div class="grid gap-6 xl:grid-cols-3">
+          <div class="glass rounded-3xl p-6">
+            <h2 class="ui text-xl font-bold">单链接采集</h2>
+            <p class="mt-2 text-sm text-slate-500">下载视频并自动使用字幕或离线语音识别。</p>
+            <div class="mt-4 space-y-3">
+              <input id="singleUrl" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none" placeholder="输入视频链接">
+              <button id="btnCollectSingle" onclick="collectSingle()" class="w-full rounded-2xl bg-slate-950 px-4 py-3 text-white">开始采集</button>
             </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                    <h2 class="text-lg font-bold mb-4 flex items-center gap-2"><i
-                            class="fas fa-align-left text-blue-500"></i> 语义检索</h2>
-                    <div class="flex flex-col gap-3">
-                        <input id="textQuery" type="text" placeholder="描述场景或人物"
-                            class="border border-gray-300 px-4 py-2 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                            onkeydown="if(event.keyCode==13) searchText()">
-                        <button onclick="searchText()" id="btnText"
-                            class="bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition shadow-sm">
-                            文本搜索
-                        </button>
-                    </div>
-                </div>
-
-                <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                    <h2 class="text-lg font-bold mb-4 flex items-center gap-2"><i
-                            class="fas fa-image text-purple-500"></i> 以图搜图</h2>
-                    <div class="flex flex-col gap-3">
-                        <input id="fileInput" type="file" accept="image/*"
-                            class="border border-gray-300 px-4 py-1.5 rounded-lg file:mr-4 file:py-1 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-purple-50 file:text-purple-700 hover:file:bg-purple-100">
-                        <button onclick="searchImage()" id="btnImg"
-                            class="bg-purple-600 text-white py-2 rounded-lg hover:bg-purple-700 transition shadow-sm">
-                            上传并比对
-                        </button>
-                    </div>
-                </div>
+          </div>
+          <div class="glass rounded-3xl p-6">
+            <h2 class="ui text-xl font-bold">账号增量同步</h2>
+            <p class="mt-2 text-sm text-slate-500">登记频道、账号或微博用户源，支持微博关键词命中任一即采。</p>
+            <div class="mt-4 space-y-3">
+              <input id="sourceUrl" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none" placeholder="输入频道链接或微博用户链接 / ID">
+              <div class="grid grid-cols-2 gap-3">
+                <select id="sourcePlatform" class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                  <option value="bilibili">bilibili</option>
+                  <option value="youtube">youtube</option>
+                  <option value="weibo">weibo</option>
+                </select>
+                <input id="sourceLimit" type="number" min="1" max="100" value="10" class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+              </div>
+              <textarea id="sourceKeywords" rows="3" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none" placeholder="微博关键词，可选。逗号或换行分隔，命中任一即采。"></textarea>
+              <button id="btnSyncSource" onclick="syncSource()" class="w-full rounded-2xl bg-teal-700 px-4 py-3 text-white">同步源</button>
             </div>
-
-            <div class="mt-8">
-                <div class="flex justify-between items-end mb-4">
-                    <h3 class="text-xl font-bold">检索结果</h3>
-                    <span id="resultCount" class="text-sm text-gray-500"></span>
-                </div>
-                <div id="results" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-5">
-                    <div
-                        class="col-span-full text-center py-12 text-gray-400 bg-white rounded-xl border border-dashed border-gray-300">
-                        输入搜索条件开始检索
-                    </div>
-                </div>
+          </div>
+          <div class="glass rounded-3xl p-6">
+            <h2 class="ui text-xl font-bold">图文导入</h2>
+            <p class="mt-2 text-sm text-slate-500">图片进入人脸流水线，正文参与语义融合。</p>
+            <div class="mt-4 space-y-3">
+              <input id="postUrl" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none" placeholder="微博链接，可选">
+              <textarea id="postText" rows="3" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none" placeholder="正文文本，可选"></textarea>
+              <textarea id="postImages" rows="4" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none" placeholder="图片 URL，每行一个"></textarea>
+              <button id="btnImportPost" onclick="importPost()" class="w-full rounded-2xl bg-sky-700 px-4 py-3 text-white">导入图文</button>
             </div>
+          </div>
         </div>
 
-        <div id="tab-gallery" class="tab-content hidden space-y-6">
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-100 flex justify-between items-center">
+        <div class="grid gap-6 xl:grid-cols-[1.25fr_0.75fr]">
+          <div class="glass rounded-3xl p-6">
+            <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <div>
+                <h2 class="ui text-xl font-bold">语义检索</h2>
+                <p class="mt-1 text-sm text-slate-500">检索融合后的 Visual、Speech、Post 语义。</p>
+              </div>
+              <div id="resultCount" class="text-sm text-slate-500">0 条结果</div>
+            </div>
+            <div class="mt-4 flex flex-col gap-3 md:flex-row">
+              <input id="textQuery" class="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none" placeholder="输入人物、事件或场景语义" onkeydown="if(event.key==='Enter'){searchText();}">
+              <button id="btnTextSearch" onclick="searchText()" class="rounded-2xl bg-amber-600 px-5 py-3 text-white">文本搜索</button>
+            </div>
+          </div>
+          <div class="glass rounded-3xl p-6">
+            <h2 class="ui text-xl font-bold">以图搜图</h2>
+            <p class="mt-1 text-sm text-slate-500">支持 cosine 与 euclidean 两种度量。</p>
+            <div class="mt-4 space-y-3">
+              <select id="imageMetric" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                <option value="cosine">cosine</option>
+                <option value="euclidean">euclidean</option>
+              </select>
+              <input id="fileInput" type="file" accept="image/*" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3">
+              <button id="btnImageSearch" onclick="searchImage()" class="w-full rounded-2xl bg-indigo-700 px-4 py-3 text-white">上传并搜索</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid gap-6 xl:grid-cols-[1.35fr_0.65fr]">
+          <div class="glass rounded-3xl p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <h2 class="ui text-xl font-bold">结果</h2>
+                <p class="mt-1 text-sm text-slate-500">搜索或识别完成后，在这里查看命中记录与语义详情。</p>
+              </div>
+              <button onclick="renderResults([])" class="text-sm text-slate-500">清空</button>
+            </div>
+            <div id="results" class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-3"></div>
+          </div>
+          <div class="space-y-6">
+            <div class="glass rounded-3xl p-6">
+              <div class="flex items-center justify-between gap-3">
                 <div>
-                    <h2 class="text-xl font-bold flex items-center gap-2"><i
-                            class="fas fa-address-book text-indigo-500"></i> 人物档案库</h2>
-                    <p class="text-sm text-gray-500 mt-1">系统已将检测到的相似人脸自动归类</p>
+                  <h2 class="ui text-xl font-bold">已登记采集源</h2>
+                  <p class="mt-1 text-sm text-slate-500">管理已登记的采集源，支持删除源登记，或连同关联数据一起清理。</p>
                 </div>
-                <button onclick="runClustering()" id="btnCluster"
-                    class="bg-indigo-600 text-white px-6 py-2.5 rounded-lg shadow-sm hover:bg-indigo-700 transition flex items-center gap-2">
-                    <i class="fas fa-magic"></i> 更新聚类结果
-                </button>
+              </div>
+              <div id="sourceList" class="mt-5 grid gap-4"></div>
             </div>
-
-            <div id="peopleGrid" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
-            </div>
-            <div class="flex items-center my-8">
-                <div class="flex-grow h-px bg-gray-200"></div>
-                <span class="px-4 text-sm text-gray-400 font-medium">手动归类</span>
-                <div class="flex-grow h-px bg-gray-200"></div>
-            </div>
-
-            <div class="bg-gray-50 rounded-2xl p-6 border-2 border-dashed border-gray-200">
-                <h3 class="text-sm font-bold text-gray-500 mb-4 flex items-center gap-2">
-                    <i class="fas fa-layer-group"></i> 待处理人脸 (将人脸拖动到上方头像完成归类)
-                </h3>
-                <div id="unassignedGrid" class="flex flex-wrap gap-3 min-h-[100px]">
+            <div class="glass rounded-3xl p-6">
+              <h2 class="ui text-xl font-bold">人脸质量过滤</h2>
+              <p class="mt-2 text-sm leading-6 text-slate-500">影响后续视频采集、图文导入和 benchmark 提取，不影响已入库数据，也不影响以图搜图的查询图片。</p>
+              <div class="mt-4 space-y-4">
+                <label class="flex items-center justify-between gap-3 rounded-2xl bg-white/70 px-4 py-3 text-sm text-slate-700">
+                  <span>启用质量过滤</span>
+                  <input id="faceQualityEnabled" type="checkbox" class="h-4 w-4 rounded border-slate-300">
+                </label>
+                <div class="grid gap-3 sm:grid-cols-3">
+                  <label class="rounded-2xl bg-white/70 px-4 py-3 text-sm text-slate-600">
+                    <span class="block text-xs uppercase tracking-[0.2em] text-slate-400">Min Face</span>
+                    <input id="faceQualityMinSize" type="number" min="20" max="256" class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none">
+                  </label>
+                  <label class="rounded-2xl bg-white/70 px-4 py-3 text-sm text-slate-600">
+                    <span class="block text-xs uppercase tracking-[0.2em] text-slate-400">Laplacian Var</span>
+                    <input id="faceQualityMinBlur" type="number" min="0" max="1000" step="1" class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none">
+                  </label>
+                  <label class="rounded-2xl bg-white/70 px-4 py-3 text-sm text-slate-600">
+                    <span class="block text-xs uppercase tracking-[0.2em] text-slate-400">Pose Dev</span>
+                    <input id="faceQualityMaxPose" type="number" min="0" max="1" step="0.01" class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none">
+                  </label>
                 </div>
+                <button id="btnSaveFaceQuality" onclick="saveFaceQuality()" class="w-full rounded-2xl bg-slate-950 px-4 py-3 text-white">保存过滤参数</button>
+              </div>
             </div>
+            <div class="glass rounded-3xl border border-red-200 p-6">
+              <p class="ui text-sm uppercase tracking-[0.25em] text-red-600">Danger Zone</p>
+              <h2 class="ui mt-2 text-xl font-bold">危险操作</h2>
+              <p class="mt-2 text-sm leading-6 text-slate-500">一键清除数据库、索引、采集媒体、派生文件和系统配置。默认保留微博与 YouTube cookie 文件。</p>
+              <button id="btnResetSystem" onclick="openResetSystemModal()" class="mt-5 w-full rounded-2xl bg-red-700 px-4 py-3 text-white">重置系统</button>
+            </div>
+          </div>
         </div>
+      </section>
 
+      <section id="tab-gallery" class="hidden space-y-6">
+        <div class="glass rounded-3xl p-6">
+          <div class="grid gap-6 xl:grid-cols-[1.1fr_0.9fr] xl:items-start">
+            <div>
+              <h2 class="ui text-xl font-bold">聚类配置</h2>
+              <p class="mt-1 text-sm text-slate-500">调整算法、距离度量与基础参数，查看当前人物库的聚类结果。</p>
+              <div class="mt-4 grid gap-3 md:grid-cols-2">
+                <select id="clusterAlgorithm" class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                  <option value="dbscan">DBSCAN</option>
+                  <option value="hdbscan">HDBSCAN</option>
+                  <option value="optics">OPTICS</option>
+                </select>
+                <select id="clusterMetric" class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                  <option value="cosine">cosine</option>
+                  <option value="euclidean">euclidean</option>
+                </select>
+                <input id="clusterEps" type="number" step="0.05" value="0.4" class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                <input id="clusterMinSamples" type="number" min="2" value="2" class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+              </div>
+              <div class="mt-4 grid gap-3 md:grid-cols-2">
+                <button id="btnClusterRun" onclick="openClusterModeModal()" class="w-full rounded-2xl bg-slate-950 px-4 py-3 text-white">运行聚类</button>
+                <button id="btnClusterRollback" onclick="rollbackClustering()" class="w-full rounded-2xl bg-slate-200 px-4 py-3 text-slate-700 disabled:cursor-not-allowed disabled:opacity-50" disabled>回退上次重聚类</button>
+              </div>
+            </div>
+            <div class="space-y-4">
+              <div id="clusterConfigSummary" class="rounded-2xl bg-slate-50 px-4 py-4 text-sm text-slate-600"></div>
+              <div class="rounded-2xl bg-white/70 px-4 py-4 text-sm leading-6 text-slate-600">
+                当前页面只保留聚类配置、人物结果与人工整理流程，便于直接查看当前库状态。
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="glass rounded-3xl p-6">
+          <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 class="ui text-xl font-bold">人物库</h2>
+              <p class="mt-1 text-sm text-slate-500">支持拖拽未分配人脸到人物卡片，也支持人物合并。</p>
+            </div>
+            <button onclick="loadPeople()" class="rounded-2xl bg-teal-700 px-4 py-3 text-white">刷新人物库</button>
+          </div>
+          <div id="peopleGrid" class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-5"></div>
+          <div class="mt-8 border-t border-slate-200 pt-6">
+            <div class="mb-3 flex items-center justify-between">
+              <h3 class="ui text-base font-bold">未分配人脸</h3>
+              <span class="text-sm text-slate-500">拖拽到上方人物卡片完成归类</span>
+            </div>
+            <div id="unassignedGrid" class="flex min-h-[88px] flex-wrap gap-3 rounded-3xl border border-dashed border-slate-300 bg-white/60 p-4"></div>
+          </div>
+        </div>
+      </section>
     </main>
+  </div>
 
-    <div id="detailModal"
-        class="fixed inset-0 z-50 flex items-center justify-center opacity-0 pointer-events-none transition-all duration-300">
-        <div class="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onclick="closeDetailModal()"></div>
-
-        <div class="bg-white w-11/12 max-w-2xl rounded-2xl shadow-2xl z-10 transform scale-95 transition-all duration-300 flex flex-col max-h-[90vh]"
-            id="detailModalCard">
-
-            <div class="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
-                <h3 class="text-lg font-bold text-gray-800">详细分析报告</h3>
-                <button onclick="closeDetailModal()" class="text-gray-400 hover:text-gray-600 transition">
-                    <i class="fas fa-times text-xl"></i>
-                </button>
-            </div>
-
-            <div class="p-6 overflow-y-auto">
-                <div class="flex flex-col md:flex-row gap-6">
-                    <div class="w-full md:w-1/2 flex-shrink-0">
-                        <div
-                            class="bg-gray-100 rounded-lg overflow-hidden border border-gray-200 aspect-square flex items-center justify-center relative group">
-                            <img id="modalImg" src="" class="max-w-full max-h-full object-contain">
-                        </div>
-                        <div id="modalScoreContainer" class="mt-3 text-center hidden">
-                            <span
-                                class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
-                                <i class="fas fa-check-circle"></i> 匹配度: <span id="modalScore">0.00</span>
-                            </span>
-                        </div>
-                    </div>
-
-                    <div class="w-full md:w-1/2 space-y-5">
-                        <div>
-                            <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">AI 场景语义分析</h4>
-                            <p id="modalDesc"
-                                class="text-sm text-gray-700 leading-relaxed bg-blue-50/50 p-3 rounded-lg border border-blue-100">
-                            </p>
-                        </div>
-
-                        <div>
-                            <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">数据溯源</h4>
-                            <div class="space-y-2 text-sm text-gray-600">
-                                <p class="flex items-center gap-2"><i class="fas fa-fingerprint w-4"></i> ID: <span
-                                        id="modalFaceId" class="font-mono"></span></p>
-                                <p class="flex items-center gap-2"><i class="fas fa-video w-4"></i> 视频: <span
-                                        id="modalVideoId" class="font-mono"></span></p>
-                                <p class="flex items-center gap-2"><i class="far fa-clock w-4"></i> 时间点: <span
-                                        id="modalTimeStr"></span></p>
-                            </div>
-                        </div>
-
-                        <div class="pt-2">
-                            <a id="modalYtLink" href="#" target="_blank"
-                                class="w-full inline-flex justify-center items-center gap-2 px-4 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 transition shadow shadow-red-500/30">
-                                <i class="fab fa-youtube text-lg"></i> 在视频中查看该画面
-                            </a>
-                        </div>
-                    </div>
-                </div>
-            </div>
+  <div id="clusterModeModal" class="pointer-events-none fixed inset-0 z-50 bg-slate-950/45 p-3 opacity-0 transition sm:p-4">
+    <div class="flex min-h-full items-center justify-center">
+      <div class="glass w-full max-w-lg rounded-3xl p-6 shadow-2xl">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <h3 class="ui text-2xl font-bold">选择聚类模式</h3>
+            <p class="mt-2 text-sm text-slate-500">默认建议使用全量重聚类，会覆盖当前人物分组，但会先保存一份可回退快照。</p>
+          </div>
+          <button onclick="closeClusterModeModal()" class="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-600">关闭</button>
         </div>
-    </div>
-
-    <div id="timelineModal"
-        class="fixed inset-0 z-40 flex items-center justify-center opacity-0 pointer-events-none transition-all duration-300">
-        <div class="absolute inset-0 bg-gray-900/60 backdrop-blur-sm" onclick="closeTimelineModal()"></div>
-        <div class="bg-white w-11/12 max-w-4xl rounded-2xl shadow-2xl z-10 h-[85vh] flex flex-col">
-            <div class="px-6 py-4 border-b flex justify-between items-center bg-gray-50 rounded-t-2xl">
-                <div>
-                    <h3 class="text-xl font-bold text-gray-800" id="timelineTitle">人物出场时间轴</h3>
-                    <p class="text-sm text-gray-500">点击画面可查看具体详情</p>
-                </div>
-                <button onclick="closeTimelineModal()" class="text-gray-400 hover:text-gray-600"><i
-                        class="fas fa-times text-xl"></i></button>
-            </div>
-            <div class="p-6 overflow-y-auto flex-1 bg-gray-50" id="timelineContent">
-            </div>
+        <div class="mt-6 space-y-3">
+          <button onclick="runClustering('full')" class="w-full rounded-2xl bg-slate-950 px-4 py-3 text-left text-white">
+            <span class="block text-sm font-semibold">全量重聚类</span>
+            <span class="mt-1 block text-xs text-white/75">按当前参数重新计算全部人脸分组，并保留一个回退点。</span>
+          </button>
+          <button onclick="runClustering('incremental')" class="w-full rounded-2xl bg-white px-4 py-3 text-left text-slate-800">
+            <span class="block text-sm font-semibold">仅处理新增</span>
+            <span class="mt-1 block text-xs text-slate-500">只对未分配人脸做增量聚类，不改已有分组。</span>
+          </button>
         </div>
+      </div>
     </div>
+  </div>
 
-    <div id="toastContainer" class="fixed bottom-5 right-5 z-[60] flex flex-col gap-2 pointer-events-none"></div>
+  <div id="dangerModal" class="pointer-events-none fixed inset-0 z-50 bg-slate-950/45 p-3 opacity-0 transition sm:p-4">
+    <div class="flex min-h-full items-center justify-center">
+      <div class="glass w-full max-w-lg rounded-3xl p-6 shadow-2xl">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <p class="ui text-sm uppercase tracking-[0.25em] text-red-600">Danger Zone</p>
+            <h3 id="dangerTitle" class="ui mt-2 text-2xl font-bold">危险操作确认</h3>
+            <p id="dangerDesc" class="mt-2 text-sm leading-6 text-slate-500"></p>
+          </div>
+          <button onclick="closeDangerModal()" class="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-600">关闭</button>
+        </div>
+        <label id="dangerCheckboxWrap" class="mt-5 hidden items-start gap-3 rounded-2xl bg-amber-50 px-4 py-4 text-sm text-slate-700">
+          <input id="dangerDeleteData" type="checkbox" class="mt-1 h-4 w-4 rounded border-slate-300">
+          <span>同时删除该源采集的数据和本地文件。</span>
+        </label>
+        <div class="mt-6 flex gap-3">
+          <button onclick="closeDangerModal()" class="flex-1 rounded-2xl bg-slate-200 px-4 py-3 text-slate-700">取消</button>
+          <button id="dangerConfirmBtn" onclick="confirmDangerAction()" class="flex-1 rounded-2xl bg-red-700 px-4 py-3 text-white">确认</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
-    <script>
-        // --- UI 工具类 ---
-        function showToast(message, type = 'info') {
-            const container = document.getElementById('toastContainer');
-            const toast = document.createElement('div');
-            const colors = {
-                success: 'bg-green-600', error: 'bg-red-600', info: 'bg-gray-800'
-            };
-            toast.className = `${colors[type]} text-white px-6 py-3 rounded-lg shadow-lg transform transition-all duration-300 translate-y-10 opacity-0 pointer-events-auto flex items-center gap-3`;
-            toast.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : type === 'error' ? 'exclamation-circle' : 'info-circle'}"></i> <span>${message}</span>`;
+  <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2"></div>
 
-            container.appendChild(toast);
-            setTimeout(() => { toast.classList.remove('translate-y-10', 'opacity-0'); }, 10);
-            setTimeout(() => {
-                toast.classList.add('opacity-0', 'translate-y-2');
-                setTimeout(() => toast.remove(), 300);
-            }, 3000);
-        }
-
-        function switchTab(tab) {
-            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
-            document.getElementById(`tab-${tab}`).classList.remove('hidden');
-
-            // 更新导航栏样式
-            document.querySelectorAll('.nav-btn').forEach(btn => {
-                btn.classList.remove('bg-indigo-50', 'text-indigo-700');
-                btn.classList.add('text-gray-500');
-            });
-            const activeBtn = document.getElementById(`nav-${tab}`);
-            activeBtn.classList.remove('text-gray-500');
-            activeBtn.classList.add('bg-indigo-50', 'text-indigo-700');
-
-            if (tab === 'gallery') loadPeople();
-        }
-
-        function setLoading(btnId, isLoading, text) {
-            const btn = document.getElementById(btnId);
-            if (isLoading) {
-                btn.disabled = true;
-                btn.dataset.original = btn.innerHTML;
-                btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${text}`;
-                btn.classList.add('opacity-70', 'cursor-not-allowed');
-            } else {
-                btn.disabled = false;
-                btn.innerHTML = btn.dataset.original;
-                btn.classList.remove('opacity-70', 'cursor-not-allowed');
-            }
-        }
-
-        function formatTime(seconds) {
-            const d = new Date(seconds * 1000);
-            return d.toISOString().substr(11, 8); // 返回 HH:MM:SS
-        }
-
-        // --- 核心业务逻辑 ---
-
-        async function collect() {
-            const url = document.getElementById('ytUrl').value;
-            if (!url) return showToast("请输入有效的 YouTube 链接", "error");
-
-            setLoading('btnCollect', true, '任务已提交，后台处理中...');
-            showToast("采集任务已启动，请关注后台日志", "info");
-
-            try {
-                const res = await fetch(`/api/collect?url=${encodeURIComponent(url)}`, { method: 'POST' });
-                const d = await res.json();
-                showToast(d.msg, d.status === 'success' ? 'success' : 'error');
-            } catch (e) {
-                showToast("网络请求失败: " + e.message, "error");
-            } finally {
-                setLoading('btnCollect', false);
-            }
-        }
-
-        async function searchText() {
-            const q = document.getElementById('textQuery').value;
-            if (!q) return showToast("请输入搜索关键词", "error");
-
-            setLoading('btnText', true, '检索中...');
-            try {
-                const res = await fetch(`/api/search/text?q=${encodeURIComponent(q)}`);
-                const data = await res.json();
-                renderResults(data.status === 'success' ? data.results : []);
-            } catch (e) { showToast("检索失败", "error"); }
-            finally { setLoading('btnText', false); }
-        }
-
-        async function searchImage() {
-            const f = document.getElementById('fileInput').files[0];
-            if (!f) return showToast("请先选择图片文件", "error");
-
-            setLoading('btnImg', true, '特征提取与比对中...');
-            const fd = new FormData();
-            fd.append('file', f);
-            try {
-                const res = await fetch('/api/search/image', { method: 'POST', body: fd });
-                const data = await res.json();
-                renderResults(data.status === 'success' ? data.results : []);
-            } catch (e) { showToast("检索失败", "error"); }
-            finally { setLoading('btnImg', false); }
-        }
-
-        // --- 渲染与交互 ---
-
-        function renderResults(results) {
-            const container = document.getElementById('results');
-            const countSpan = document.getElementById('resultCount');
-            container.innerHTML = '';
-
-            if (!results || results.length === 0) {
-                container.innerHTML = '<div class="col-span-full text-center py-12 text-gray-500 bg-gray-50 rounded-xl border border-dashed border-gray-300">没有找到匹配的结果</div>';
-                countSpan.innerText = "0 个结果";
-                return;
-            }
-
-            countSpan.innerText = `找到 ${results.length} 个结果`;
-
-            results.forEach(item => {
-                // 如果后端没有传 video_id (旧数据)，设个默认值避免报错
-                if (!item.video_id) item.video_id = "未知";
-                if (!item.timestamp) item.timestamp = 0;
-
-                const div = document.createElement('div');
-                div.className = 'bg-white border border-gray-100 rounded-xl overflow-hidden shadow-sm hover:shadow-md transition cursor-pointer group';
-                // 【核心修改】点击整张卡片触发详情模态框
-                div.onclick = () => showDetailModal(item);
-
-                let scoreHtml = '';
-                if (item.score !== undefined) {
-                    scoreHtml = `<div class="absolute top-2 right-2 bg-black/70 text-white text-[10px] px-2 py-1 rounded-full backdrop-blur-md">相似度: ${(item.score).toFixed(3)}</div>`;
-                }
-
-                div.innerHTML = `
-                    <div class="relative h-40 overflow-hidden bg-gray-100">
-                        <img src="${item.image || item.image_path}" class="w-full h-full object-cover transition duration-300 group-hover:scale-110">
-                        ${scoreHtml}
-                        <div class="absolute inset-0 bg-indigo-600/0 group-hover:bg-indigo-600/10 transition flex items-center justify-center">
-                            <i class="fas fa-search-plus text-white text-3xl opacity-0 group-hover:opacity-100 transform scale-50 group-hover:scale-100 transition-all duration-300"></i>
-                        </div>
-                    </div>
-                    <div class="p-3">
-                        <p class="text-xs text-gray-600 line-clamp-2 h-8" title="${item.desc || item.description}">${item.desc || item.description}</p>
-                        <div class="mt-2 flex items-center justify-between text-[10px] text-gray-400">
-                            <span><i class="far fa-clock"></i> ${formatTime(item.timestamp)}</span>
-                        </div>
-                    </div>
-                `;
-                container.appendChild(div);
-            });
-        }
-
-        // --- 聚类相关 ---
-
-        async function runClustering() {
-            setLoading('btnCluster', true, 'AI 计算中...');
-            try {
-                const res = await fetch('/api/cluster/run', { method: 'POST' });
-                const data = await res.json();
-                if (data.status === 'success') {
-                    showToast(`聚类完成！分类出 ${data.clusters_count} 个人物`, "success");
-                    loadPeople();
-                } else {
-                    showToast(data.message, "error");
-                }
-            } catch (e) { showToast("聚类失败", "error"); }
-            finally { setLoading('btnCluster', false); }
-        }
-
-        async function loadPeople() {
-            try {
-                const res = await fetch('/api/people');
-                if (!res.ok) {
-                    const errText = await res.text();
-                    console.error("后端接口异常:", res.status, errText);
-                    throw new Error(`服务器错误状态码: ${res.status}`);
-                }
-
-                const data = await res.json();
-
-                const grid = document.getElementById('peopleGrid');
-                const unassignedGrid = document.getElementById('unassignedGrid');
-
-                if (!grid) return;
-                grid.innerHTML = '';
-                if (unassignedGrid) unassignedGrid.innerHTML = '';
-
-                // 1. 渲染已归类人物
-                (data.people || []).forEach(p => {
-                    const div = document.createElement('div');
-                    div.className = 'bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex flex-col items-center group transition-all hover:shadow-md';
-
-                    // 整个大卡片作为接收拖拽的“投放目标”
-                    div.ondragover = (e) => { e.preventDefault(); div.classList.add('ring-2', 'ring-indigo-500', 'bg-indigo-50'); };
-                    div.ondragleave = () => { div.classList.remove('ring-2', 'ring-indigo-500', 'bg-indigo-50'); };
-                    div.ondrop = (e) => handleDrop(e, p.person_id);
-
-                    const displayName = p.name || `人物 ${p.person_id}`;
-
-                    // 【核心修改】将 draggable="true" 加在头像外层的容器上，并绑定 source_person_id
-                    div.innerHTML = `
-                <div draggable="true" 
-                     ondragstart="event.dataTransfer.setData('source_person_id', '${p.person_id}'); event.currentTarget.classList.add('opacity-50')"
-                     ondragend="event.currentTarget.classList.remove('opacity-50')"
-                     class="relative w-20 h-20 rounded-full overflow-hidden mb-3 border-2 border-indigo-500 shadow-inner cursor-grab active:cursor-grabbing hover:scale-105 transition-transform">
-                    <img src="${p.cover_image}" draggable="false" class="w-full h-full object-cover" onclick="openTimelineModal(${p.person_id})">
+  <div id="detailModal" class="pointer-events-none fixed inset-0 z-50 overflow-y-auto bg-slate-950/45 p-3 opacity-0 transition sm:p-4">
+    <div class="flex min-h-full items-start justify-center sm:items-center">
+      <div class="glass flex w-full max-w-5xl flex-col overflow-hidden rounded-3xl shadow-2xl max-h-[calc(100vh-1.5rem)] sm:max-h-[calc(100vh-2rem)]">
+        <div class="flex items-start justify-between gap-4 border-b border-slate-200 px-4 py-4 sm:px-6">
+          <div>
+            <h3 class="ui text-2xl font-bold">语义详情</h3>
+            <p class="mt-1 text-sm text-slate-500">查看视觉、语音/字幕、正文和当前聚类配置。</p>
+          </div>
+          <button onclick="closeDetailModal()" class="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-600">关闭</button>
+        </div>
+        <div class="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+          <div class="grid gap-6 lg:grid-cols-[1.05fr_0.95fr]">
+            <div class="overflow-hidden rounded-3xl bg-slate-100">
+              <img id="modalImg" src="" class="h-[240px] w-full object-contain sm:h-[320px] lg:h-[420px]">
+            </div>
+            <div class="space-y-4">
+              <div class="rounded-2xl bg-white/70 p-4">
+                <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Semantic</p>
+                <p id="modalSemantic" class="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-sm leading-7 text-slate-700"></p>
+              </div>
+              <div class="grid gap-3">
+                <div class="rounded-2xl bg-white/70 p-4">
+                  <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Visual</p>
+                  <p id="modalVisual" class="mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-sm leading-6 text-slate-700"></p>
                 </div>
-                <input type="text" value="${displayName}" 
-                    class="text-xs font-bold text-center bg-transparent border-b border-transparent hover:border-gray-300 focus:border-indigo-500 outline-none w-full py-1"
-                    onchange="renamePerson(${p.person_id}, this.value)">
-                <span class="text-[10px] bg-gray-100 px-2 py-0.5 rounded-full text-gray-500 mt-2">${p.count} 帧</span>
-            `;
-                    grid.appendChild(div);
-                });
+                <div class="rounded-2xl bg-white/70 p-4">
+                  <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Speech</p>
+                  <p id="modalSpeech" class="mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-sm leading-6 text-slate-700"></p>
+                </div>
+                <div class="rounded-2xl bg-white/70 p-4">
+                  <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Post</p>
+                  <p id="modalPost" class="mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-sm leading-6 text-slate-700"></p>
+                </div>
+              </div>
+              <div class="rounded-2xl bg-white/70 p-4 text-sm text-slate-600">
+                <p><span class="font-semibold">内容类型：</span><span id="modalType"></span></p>
+                <p class="mt-2"><span class="font-semibold">时间戳：</span><span id="modalTime"></span></p>
+                <p class="mt-2"><span class="font-semibold">来源：</span><span id="modalSource"></span></p>
+                <p class="mt-2"><span class="font-semibold">聚类配置：</span><span id="modalCluster"></span></p>
+              </div>
+              <a id="modalLink" href="#" target="_blank" class="inline-flex rounded-2xl bg-slate-950 px-4 py-3 text-sm text-white">跳转原始内容</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
-                // 2. 渲染未归类人脸
-                if (unassignedGrid) {
-                    (data.unassigned || []).forEach(face => {
-                        const img = document.createElement('img');
-                        img.src = face.image_path;
-                        img.className = 'w-16 h-16 object-cover rounded-lg cursor-grab active:cursor-grabbing border-2 border-white shadow-sm hover:scale-105 transition';
-                        img.draggable = true;
-                        img.ondragstart = (e) => {
-                            e.dataTransfer.setData("face_id", face.id);
-                            img.classList.add('opacity-50');
-                        };
-                        img.ondragend = () => img.classList.remove('opacity-50');
-                        unassignedGrid.appendChild(img);
-                    });
-                }
-            } catch (e) {
-                console.error("人物库加载逻辑崩溃:", e);
-                showToast("加载人物库失败，请按 F12 查看控制台报错", "error");
-            }
-        }
-        // 命名函数
-        async function renamePerson(id, newName) {
-            const res = await fetch('/api/person/rename', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ person_id: id, name: newName })
-            });
-            if (res.ok) showToast(`已更名为: ${newName}`);
-        }
+  <div id="timelineModal" class="pointer-events-none fixed inset-0 z-40 overflow-y-auto bg-slate-950/45 p-3 opacity-0 transition sm:p-4">
+    <div class="flex min-h-full items-start justify-center sm:items-center">
+      <div class="glass flex w-full max-w-5xl flex-col overflow-hidden rounded-3xl shadow-2xl max-h-[calc(100vh-1.5rem)] sm:max-h-[calc(100vh-2rem)]">
+        <div class="flex items-center justify-between gap-4 border-b border-slate-200 px-4 py-4 sm:px-6">
+          <div>
+            <h3 id="timelineTitle" class="ui text-2xl font-bold">人物时间线</h3>
+            <p class="mt-1 text-sm text-slate-500">查看人物在视频和图文中的出现记录。</p>
+          </div>
+          <button onclick="closeTimelineModal()" class="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-600">关闭</button>
+        </div>
+        <div id="timelineContent" class="flex-1 overflow-y-auto px-4 py-4 sm:px-6"></div>
+      </div>
+    </div>
+  </div>
 
-        // 拖拽落点处理
-        async function handleDrop(e, targetPersonId) {
-            e.preventDefault();
-            e.currentTarget.classList.remove('ring-2', 'ring-indigo-500', 'bg-indigo-50');
+  <script>
+    const state={currentClusterConfig:null,faceQualityConfig:null,timelineItems:[],hasClusterSnapshot:false,dangerAction:null,currentTab:"search"};
+    const safeText=(v,f="暂无")=>v&&String(v).trim()?String(v).trim():f;
+    const formatTime=(s)=>{const n=Math.max(0,Math.floor(Number(s||0)));return`${String(Math.floor(n/3600)).padStart(2,"0")}:${String(Math.floor((n%3600)/60)).padStart(2,"0")}:${String(n%60).padStart(2,"0")}`};
+    const fetchJson=async(u,o={})=>(await fetch(u,o)).json();
 
-            // 尝试获取两种不同的拖拽数据
-            const faceId = e.dataTransfer.getData("face_id");
-            const sourcePersonId = e.dataTransfer.getData("source_person_id");
+    function setLoading(id,on,text){
+      const b=document.getElementById(id);
+      if(!b)return;
+      if(on){
+        b.dataset.t=b.textContent;
+        b.textContent=text;
+        b.disabled=true;
+        b.classList.add("opacity-70");
+      }else{
+        b.textContent=b.dataset.t||b.textContent;
+        b.disabled=false;
+        b.classList.remove("opacity-70");
+      }
+    }
 
-            // 场景 A：合并两个已聚类的人物
-            if (sourcePersonId) {
-                const sourceIdInt = parseInt(sourcePersonId);
+    function showToast(m,t="info"){
+      const c={success:"bg-teal-700",error:"bg-red-700",info:"bg-slate-900"};
+      const d=document.createElement("div");
+      d.className=`${c[t]} rounded-2xl px-4 py-3 text-sm text-white shadow-lg`;
+      d.textContent=m;
+      document.getElementById("toastContainer").appendChild(d);
+      setTimeout(()=>d.remove(),3200);
+    }
 
-                if (sourceIdInt === targetPersonId) {
-                    showToast("不能将人物合并到自己身上", "warning");
-                    return;
-                }
+    const setModalOpen=(open)=>document.body.classList.toggle("modal-open",open);
+    const modalIds=["detailModal","timelineModal","clusterModeModal","dangerModal"];
 
-                // 高危操作，加一个确认框比较安全
-                if (!confirm(`确定要把人物 ${sourceIdInt} 的所有照片，都合并给人物 ${targetPersonId} 吗？合并后无法撤销。`)) {
-                    return;
-                }
+    function syncModalState(){
+      setModalOpen(modalIds.some(id=>{
+        const el=document.getElementById(id);
+        return el&&!el.classList.contains("pointer-events-none");
+      }));
+    }
 
-                const res = await fetch('/api/person/merge', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ source_person_id: sourceIdInt, target_person_id: targetPersonId })
-                });
+    function closeClusterModeModal(){
+      document.getElementById("clusterModeModal").classList.add("pointer-events-none","opacity-0");
+      syncModalState();
+    }
 
-                if (res.ok) {
-                    showToast("人物合并成功");
-                    loadPeople();
-                } else {
-                    showToast("人物合并失败", "error");
-                }
-            }
-            // 场景 B：将单张未处理人脸归类到人物
-            else if (faceId) {
-                const res = await fetch('/api/face/reassign', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ face_id: parseInt(faceId), target_person_id: targetPersonId })
-                });
+    function openClusterModeModal(){
+      document.getElementById("clusterModeModal").classList.remove("pointer-events-none","opacity-0");
+      syncModalState();
+    }
 
-                if (res.ok) {
-                    showToast("图片归类成功");
-                    loadPeople();
-                } else {
-                    showToast("归类失败", "error");
-                }
-            }
-            // 异常拦截
-            else {
-                showToast("无法识别的拖拽内容", "error");
-            }
-        }
-        // --- 弹窗控制逻辑 ---
+    function closeDangerModal(){
+      document.getElementById("dangerModal").classList.add("pointer-events-none","opacity-0");
+      document.getElementById("dangerDeleteData").checked=false;
+      state.dangerAction=null;
+      syncModalState();
+    }
 
-        // 1. 全局详情弹窗
-        function showDetailModal(item) {
-            const modal = document.getElementById('detailModal');
-            const card = document.getElementById('detailModalCard');
+    function openDeleteSourceModal(source){
+      state.dangerAction={type:"deleteSource",source};
+      document.getElementById("dangerTitle").textContent="删除采集源";
+      document.getElementById("dangerDesc").textContent=`将删除采集源“${safeText(source.title,source.platform)}”的登记记录。可选同时删除该源采集的数据和本地文件。`;
+      document.getElementById("dangerCheckboxWrap").classList.remove("hidden");
+      document.getElementById("dangerCheckboxWrap").classList.add("flex");
+      document.getElementById("dangerConfirmBtn").textContent="删除源";
+      document.getElementById("dangerModal").classList.remove("pointer-events-none","opacity-0");
+      syncModalState();
+    }
 
-            // 【修改点1】优先展示完整的视频大图
-            document.getElementById('modalImg').src = item.full_image || item.full_image_path || item.image || item.image_path;
+    function openResetSystemModal(){
+      state.dangerAction={type:"resetSystem"};
+      document.getElementById("dangerTitle").textContent="重置系统";
+      document.getElementById("dangerDesc").textContent="将清空数据库、索引、采集媒体、派生文件与系统配置，并把系统恢复到初始状态。默认保留微博与 YouTube cookie 文件。";
+      document.getElementById("dangerCheckboxWrap").classList.add("hidden");
+      document.getElementById("dangerCheckboxWrap").classList.remove("flex");
+      document.getElementById("dangerConfirmBtn").textContent="重置系统";
+      document.getElementById("dangerModal").classList.remove("pointer-events-none","opacity-0");
+      syncModalState();
+    }
 
-            document.getElementById('modalDesc').innerText = item.desc || item.description;
-            document.getElementById('modalFaceId').innerText = item.id;
-            document.getElementById('modalVideoId').innerText = item.video_id;
-            document.getElementById('modalTimeStr').innerText = formatTime(item.timestamp);
-
-            // 【修改点2】智能跨平台跳转逻辑
-            let sourceUrl = item.source_url || `https://youtube.com/watch?v=${item.video_id}`;
-            let t = Math.floor(item.timestamp || 0);
-            let finalUrl = sourceUrl;
-
-            if (sourceUrl.includes('bilibili.com')) {
-                // B站时间跳转使用 ?t=秒 或 &t=秒
-                finalUrl += sourceUrl.includes('?') ? `&t=${t}` : `?t=${t}`;
-            } else if (sourceUrl.includes('youtube.com') || sourceUrl.includes('youtu.be')) {
-                // YouTube 使用 &t=秒s 或 ?t=秒s
-                finalUrl += sourceUrl.includes('?') ? `&t=${t}s` : `?t=${t}s`;
-            }
-
-            document.getElementById('modalYtLink').href = finalUrl;
-            // 顺便把按钮文案改得更通用
-            document.getElementById('modalYtLink').innerHTML = `<i class="fas fa-external-link-alt text-lg"></i> 跳转到原视频该画面`;
-
-            // 分数处理
-            const scoreContainer = document.getElementById('modalScoreContainer');
-            if (item.score !== undefined) {
-                document.getElementById('modalScore').innerText = item.score.toFixed(4);
-                scoreContainer.classList.remove('hidden');
-            } else {
-                scoreContainer.classList.add('hidden');
-            }
-
-            modal.classList.remove('opacity-0', 'pointer-events-none');
-            setTimeout(() => {
-                card.classList.remove('scale-95');
-                card.classList.add('scale-100');
-            }, 10);
+    async function confirmDangerAction(){
+      if(!state.dangerAction)return;
+      setLoading("dangerConfirmBtn",true,"处理中...");
+      try{
+        if(state.dangerAction.type==="deleteSource"){
+          const deleteData=document.getElementById("dangerDeleteData").checked;
+          const d=await fetchJson("/api/source/delete",{
+            method:"POST",
+            headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({source_id:state.dangerAction.source.id,delete_data:deleteData})
+          });
+          if(d.status!=="success")return showToast(d.message||"删除采集源失败。","error");
+          const detail=deleteData
+            ?`内容 ${d.deleted_contents||0} / 人脸 ${d.deleted_faces||0} / 文件 ${d.deleted_files||0}`
+            :"仅删除登记记录";
+          const legacy=(d.unresolved_legacy_items||0)>0?`；有 ${d.unresolved_legacy_items} 条旧微博数据因缺少明确关联未删除`:"";
+          showToast(`采集源已删除：${detail}${legacy}`,"success");
+          closeDangerModal();
+          await loadSystemStatus();
+          await loadPeople();
+          return;
         }
 
-        function closeDetailModal() {
-            const modal = document.getElementById('detailModal');
-            const card = document.getElementById('detailModalCard');
-            card.classList.remove('scale-100');
-            card.classList.add('scale-95');
-            setTimeout(() => {
-                modal.classList.add('opacity-0', 'pointer-events-none');
-            }, 200); // 等待动画结束
-        }
+        const d=await fetchJson("/api/system/reset",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({preserve_cookies:true})
+        });
+        if(d.status!=="success")return showToast(d.message||"系统重置失败。","error");
+        const preserved=(d.preserved_files||[]).length;
+        showToast(`系统已重置，清理 ${d.removed_files_count||0} 个文件，保留 ${preserved} 个 cookie 文件。`,"success");
+        closeDangerModal();
+        await loadSystemStatus();
+        await loadPeople();
+        renderResults([]);
+      }finally{
+        setLoading("dangerConfirmBtn",false);
+      }
+    }
 
-        // 2. 时间轴弹窗 (聚类人物集合)
-        async function openTimelineModal(personId) {
-            const modal = document.getElementById('timelineModal');
-            const content = document.getElementById('timelineContent');
-            document.getElementById('timelineTitle').innerText = `人物档案 #${personId}`;
-            content.innerHTML = '<div class="flex justify-center py-10"><i class="fas fa-spinner fa-spin text-3xl text-indigo-500"></i></div>';
+    function updateClusterSnapshotState(hasSnapshot){
+      state.hasClusterSnapshot=Boolean(hasSnapshot);
+      const btn=document.getElementById("btnClusterRollback");
+      if(!btn)return;
+      btn.disabled=!state.hasClusterSnapshot;
+    }
 
-            modal.classList.remove('opacity-0', 'pointer-events-none');
-            document.body.classList.add('modal-active');
+    function switchTab(tab){
+      if(state.currentTab===tab)return;
+      state.currentTab=tab;
+      document.getElementById("tab-search").classList.toggle("hidden",tab!=="search");
+      document.getElementById("tab-gallery").classList.toggle("hidden",tab!=="gallery");
+      document.getElementById("nav-search").classList.toggle("active",tab==="search");
+      document.getElementById("nav-gallery").classList.toggle("active",tab==="gallery");
+      if(tab==="gallery")loadPeople();
+    }
 
-            try {
-                const res = await fetch(`/api/person/${personId}`);
-                if (!res.ok) throw new Error(await res.text());
+    function renderClusterConfig(c){
+      document.getElementById("clusterConfigSummary").innerHTML=c
+        ?`当前默认配置：<span class="font-semibold">${c.algorithm}</span> / <span class="font-semibold">${c.metric}</span> / eps <span class="font-semibold">${c.eps}</span> / min_samples <span class="font-semibold">${c.min_samples}</span>`
+        :"暂无";
+    }
 
-                const data = await res.json();
-                content.innerHTML = '';
+    function renderFaceQualityConfig(config){
+      if(!config)return;
+      state.faceQualityConfig=config;
+      document.getElementById("faceQualityEnabled").checked=Boolean(config.enabled);
+      document.getElementById("faceQualityMinSize").value=config.min_face_size;
+      document.getElementById("faceQualityMinBlur").value=config.min_laplacian_var;
+      document.getElementById("faceQualityMaxPose").value=config.max_pose_deviation;
+    }
 
-                if (!data.timeline || data.timeline.length === 0) {
-                    content.innerHTML = '<div class="text-center text-gray-500 py-10">该人物下暂无画面</div>';
-                    return;
-                }
+    async function loadSystemStatus(){
+      const d=await fetchJson("/api/system/status");
+      if(d.status!=="success")return;
+      state.currentClusterConfig=d.cluster_config;
+      state.faceQualityConfig=d.face_quality_config;
+      updateClusterSnapshotState(d.has_cluster_snapshot);
+      document.getElementById("clusterAlgorithm").value=d.cluster_config.algorithm;
+      document.getElementById("clusterMetric").value=d.cluster_config.metric;
+      document.getElementById("clusterEps").value=d.cluster_config.eps;
+      document.getElementById("clusterMinSamples").value=d.cluster_config.min_samples;
+      renderClusterConfig(d.cluster_config);
+      renderFaceQualityConfig(d.face_quality_config);
+      renderSources(d.sources||[]);
+    }
 
-                const timelineWrapper = document.createElement('div');
-                timelineWrapper.className = 'relative border-l-2 border-indigo-200 ml-4 space-y-8 pb-8 mt-4';
+    async function saveFaceQuality(){
+      const payload={
+        enabled:document.getElementById("faceQualityEnabled").checked,
+        min_face_size:Number(document.getElementById("faceQualityMinSize").value||0),
+        min_laplacian_var:Number(document.getElementById("faceQualityMinBlur").value||0),
+        max_pose_deviation:Number(document.getElementById("faceQualityMaxPose").value||0)
+      };
+      setLoading("btnSaveFaceQuality",true,"保存中...");
+      try{
+        const d=await fetchJson("/api/system/face-quality",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify(payload)
+        });
+        if(d.status!=="success")return showToast(d.message||"保存人脸过滤参数失败。","error");
+        renderFaceQualityConfig(d.face_quality_config);
+        showToast("人脸质量过滤参数已保存。","success");
+      }finally{
+        setLoading("btnSaveFaceQuality",false);
+      }
+    }
 
-                data.timeline.forEach(item => {
-                    // 【防崩溃1】确保时间戳和链接存在默认值
-                    const timeStr = formatTime(item.timestamp || 0);
-                    let t = Math.floor(item.timestamp || 0);
-                    let sourceUrl = item.source_url || `https://youtube.com/watch?v=${item.video_id || ''}`;
-                    let ytUrl = sourceUrl;
+    async function collectSingle(){
+      const url=document.getElementById("singleUrl").value.trim();
+      if(!url)return showToast("请输入视频链接。","error");
+      setLoading("btnCollectSingle",true,"处理中...");
+      try{
+        const d=await fetchJson(`/api/collect?url=${encodeURIComponent(url)}`,{method:"POST"});
+        showToast(d.msg||d.message||"任务已提交。",d.status==="success"?"success":"error");
+        await loadSystemStatus();
+      }finally{
+        setLoading("btnCollectSingle",false);
+      }
+    }
 
-                    if (sourceUrl.includes('bilibili')) {
-                        ytUrl += sourceUrl.includes('?') ? `&t=${t}` : `?t=${t}`;
-                    } else if (sourceUrl.includes('youtube.com') || sourceUrl.includes('youtu.be')) {
-                        ytUrl += sourceUrl.includes('?') ? `&t=${t}s` : `?t=${t}s`;
-                    }
+    async function syncSource(){
+      const sourceUrl=document.getElementById("sourceUrl").value.trim();
+      if(!sourceUrl)return showToast("请输入采集源链接。","error");
+      setLoading("btnSyncSource",true,"同步中...");
+      try{
+        const platform=document.getElementById("sourcePlatform").value;
+        const keywords=document.getElementById("sourceKeywords").value.split(/\n|,|，/).map(v=>v.trim()).filter(Boolean);
+        const sourceType=platform==="weibo"?"weibo_user":"channel";
+        const d=await fetchJson("/api/collect/source",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({
+            source_url:sourceUrl,
+            platform,
+            source_type:sourceType,
+            keywords,
+            limit:Number(document.getElementById("sourceLimit").value||10)
+          })
+        });
+        if(d.status!=="success")return showToast(d.msg||d.message||"同步失败。","error");
+        const stats=d.sync_stats;
+        const statsText=stats
+          ?`抓取 ${stats.fetched_count||0} / 命中 ${stats.matched_count||0} / 导入 ${stats.imported_count||0} / 过滤 ${stats.filtered_count||0} / 重复 ${stats.duplicate_count||0}`
+          :"";
+        showToast(statsText?`${d.msg||"同步完成。"} ${statsText}`:d.msg||d.message||"同步任务已提交。","success");
+        await loadSystemStatus();
+      }finally{
+        setLoading("btnSyncSource",false);
+      }
+    }
 
-                    const row = document.createElement('div');
-                    row.className = 'relative pl-6';
+    async function importPost(){
+      const imageUrls=document.getElementById("postImages").value.split("\n").map(v=>v.trim()).filter(Boolean);
+      const url=document.getElementById("postUrl").value.trim();
+      if(!imageUrls.length&&!url)return showToast("至少提供微博链接或图片 URL。","error");
+      setLoading("btnImportPost",true,"导入中...");
+      try{
+        const d=await fetchJson("/api/import/post",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({
+            platform:"weibo",
+            url,
+            post_text:document.getElementById("postText").value.trim(),
+            image_urls:imageUrls
+          })
+        });
+        showToast(d.msg||d.message||"图文导入任务已提交。",d.status==="success"?"success":"error");
+      }finally{
+        setLoading("btnImportPost",false);
+      }
+    }
 
-                    // 【防崩溃2】优先使用完整图，如果没有则回退
-                    const coverImg = item.full_image_path || item.image_path || '';
-                    const descText = item.description || '暂无描述信息';
-                    const videoIdText = item.video_id || '未知来源';
+    async function searchText(){
+      const q=document.getElementById("textQuery").value.trim();
+      if(!q)return showToast("请输入检索词。","error");
+      setLoading("btnTextSearch",true,"搜索中...");
+      try{
+        const d=await fetchJson(`/api/search/text?q=${encodeURIComponent(q)}`);
+        renderResults(d.results||[]);
+      }finally{
+        setLoading("btnTextSearch",false);
+      }
+    }
 
-                    row.innerHTML = `
-                        <div class="absolute -left-[9px] top-1 w-4 h-4 rounded-full bg-indigo-500 border-4 border-white shadow"></div>
-                        <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-4 hover:shadow-md transition cursor-pointer group flex flex-col sm:flex-row gap-4">
-                            <div class="w-full sm:w-48 h-32 flex-shrink-0 rounded-lg overflow-hidden bg-gray-100 relative">
-                                <img src="${coverImg}" class="w-full h-full object-cover">
-                                <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
-                                    <i class="fas fa-expand text-white text-xl"></i>
-                                </div>
-                            </div>
-                            
-                            <div class="flex-1 flex flex-col justify-between overflow-hidden">
-                                <div>
-                                    <div class="flex items-center gap-2 mb-2">
-                                        <span class="bg-indigo-100 text-indigo-800 text-xs font-bold px-2 py-0.5 rounded flex-shrink-0"><i class="far fa-clock"></i> ${timeStr}</span>
-                                        <span class="text-xs text-gray-500 font-mono truncate"><i class="fas fa-video"></i> ${videoIdText}</span>
-                                    </div>
-                                    <p class="text-sm text-gray-700 line-clamp-2">${descText}</p>
-                                </div>
-                                <div class="mt-3 flex gap-2">
-                                    <a href="${ytUrl}" target="_blank" onclick="event.stopPropagation()" class="text-xs bg-red-50 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-md transition flex items-center gap-1 font-medium w-max">
-                                        <i class="fab fa-youtube"></i> 跳转视频
-                                    </a>
-                                </div>
-                            </div>
-                        </div>
-                    `;
-                    // 点击卡片也调用全局详情模态框
-                    row.querySelector('.bg-white').onclick = () => showDetailModal(item);
-                    timelineWrapper.appendChild(row);
-                });
+    async function searchImage(){
+      const file=document.getElementById("fileInput").files[0];
+      if(!file)return showToast("请选择图片文件。","error");
+      setLoading("btnImageSearch",true,"检索中...");
+      try{
+        const fd=new FormData();
+        fd.append("file",file);
+        const metric=document.getElementById("imageMetric").value;
+        const r=await fetch(`/api/search/image?metric=${encodeURIComponent(metric)}`,{method:"POST",body:fd});
+        const d=await r.json();
+        if(d.status!=="success")return showToast(d.message||"图片检索失败。","error");
+        renderResults(d.results||[]);
+      }finally{
+        setLoading("btnImageSearch",false);
+      }
+    }
 
-                content.appendChild(timelineWrapper);
-            } catch (e) {
-                console.error("加载档案失败:", e);
-                // 直接将真实错误打印
-                content.innerHTML = `<div class="text-center text-red-500 py-10 bg-red-50 rounded-xl border border-red-200">
-                    <i class="fas fa-exclamation-triangle text-2xl mb-2"></i><br>
-                    加载失败<br><span class="text-xs text-red-400 font-mono mt-2 block">${e.message}</span>
-                </div>`;
-            }
-        }
+    function renderResults(results){
+      document.getElementById("resultCount").textContent=`${results.length} 条结果`;
+      const c=document.getElementById("results");
+      if(!results.length){
+        c.innerHTML=`<div class="rounded-3xl border border-dashed border-slate-300 bg-white/70 px-6 py-12 text-center text-sm text-slate-400">没有可展示的结果。</div>`;
+        return;
+      }
+      c.innerHTML="";
+      results.forEach(item=>{
+        const badge=item.content_type==="post"?"图文":"视频";
+        const score=item.score!==undefined&&item.score!==null?`${Number(item.score).toFixed(4)} · ${item.metric||"semantic"}`:"";
+        const d=document.createElement("button");
+        d.className="glass rounded-3xl p-3 text-left shadow-sm";
+        d.onclick=()=>openDetailModal(item);
+        d.innerHTML=`<div class="relative overflow-hidden rounded-2xl bg-slate-100"><img src="${item.image||item.image_path}" class="h-52 w-full object-cover"><div class="absolute left-3 top-3 rounded-full bg-white/90 px-3 py-1 text-xs">${badge}</div>${score?`<div class="absolute right-3 top-3 rounded-full bg-slate-950/80 px-3 py-1 text-xs text-white">${score}</div>`:""}</div><div class="mt-3"><p class="line-clamp-3 text-sm leading-6 text-slate-700">${safeText(item.semantic_text||item.description)}</p><div class="mt-3 flex items-center justify-between text-xs text-slate-500"><span>${safeText(item.platform||"unknown")}</span><span>${item.content_type==="video"?formatTime(item.timestamp):"图文内容"}</span></div></div>`;
+        c.appendChild(d);
+      });
+    }
 
-        function closeTimelineModal() {
-            document.getElementById('timelineModal').classList.add('opacity-0', 'pointer-events-none');
-            document.body.classList.remove('modal-active');
-        }
+    function renderSources(sources){
+      const c=document.getElementById("sourceList");
+      if(!sources.length){
+        c.innerHTML=`<div class="rounded-2xl bg-white/70 p-4 text-sm text-slate-500">当前还没有登记采集源。</div>`;
+        return;
+      }
+      c.innerHTML="";
+      sources.forEach(s=>{
+        const keywords=(s.keywords||[]).join("、");
+        const stats=s.last_sync_stats||{};
+        const statsLine=Object.keys(stats).length
+          ?`上次结果：抓取 ${stats.fetched_count||0} / 命中 ${stats.matched_count||0} / 导入 ${stats.imported_count||0} / 过滤 ${stats.filtered_count||0} / 重复 ${stats.duplicate_count||0}`
+          :"";
+        const d=document.createElement("div");
+        d.className="rounded-3xl bg-white/70 p-4";
+        d.innerHTML=`<div class="flex items-start justify-between gap-3"><div class="min-w-0"><p class="ui text-lg font-bold">${safeText(s.title,s.platform)}</p><p class="mt-1 break-all text-sm text-slate-500">${safeText(s.source_url)}</p></div><span class="rounded-full bg-slate-100 px-3 py-1 text-xs">${safeText(s.source_type)}</span></div>${keywords?`<p class="mt-3 text-xs text-slate-500">关键词：${keywords}</p>`:""}${statsLine?`<p class="mt-2 text-xs text-slate-500">${statsLine}</p>`:""}<p class="mt-3 text-xs text-slate-400">上次同步：${safeText(s.last_synced_at,"未同步")}</p><div class="mt-4 flex gap-3"><button class="delete-source-btn rounded-2xl bg-red-700 px-4 py-2 text-sm text-white">删除源</button></div>`;
+        d.querySelector(".delete-source-btn").addEventListener("click",()=>openDeleteSourceModal(s));
+        c.appendChild(d);
+      });
+    }
 
-    </script>
+    async function runClustering(mode="full"){
+      closeClusterModeModal();
+      setLoading("btnClusterRun",true,"运行中...");
+      try{
+        const d=await fetchJson("/api/cluster/run",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({
+            algorithm:document.getElementById("clusterAlgorithm").value,
+            metric:document.getElementById("clusterMetric").value,
+            eps:Number(document.getElementById("clusterEps").value),
+            min_samples:Number(document.getElementById("clusterMinSamples").value),
+            mode
+          })
+        });
+        if(d.status!=="success")return showToast(d.message||"聚类失败。","error");
+        state.currentClusterConfig=d.config;
+        updateClusterSnapshotState(d.has_cluster_snapshot);
+        renderClusterConfig(d.config);
+        const label=mode==="full"?"全量重聚类":"增量聚类";
+        const snapshotNote=d.snapshot_created?"，已保存回退点":"";
+        showToast(`${label}完成：${d.clusters_count} 个簇，重分配 ${d.reassigned_faces} 张，噪声占比 ${d.noise_ratio}${snapshotNote}`,"success");
+        await loadPeople();
+      }finally{
+        setLoading("btnClusterRun",false);
+      }
+    }
+
+    async function rollbackClustering(){
+      if(!state.hasClusterSnapshot)return showToast("当前没有可回退的重聚类快照。","error");
+      setLoading("btnClusterRollback",true,"回退中...");
+      try{
+        const d=await fetchJson("/api/cluster/rollback",{method:"POST"});
+        if(d.status!=="success")return showToast(d.message||"回退失败。","error");
+        state.currentClusterConfig=d.cluster_config;
+        updateClusterSnapshotState(d.has_cluster_snapshot);
+        document.getElementById("clusterAlgorithm").value=d.cluster_config.algorithm;
+        document.getElementById("clusterMetric").value=d.cluster_config.metric;
+        document.getElementById("clusterEps").value=d.cluster_config.eps;
+        document.getElementById("clusterMinSamples").value=d.cluster_config.min_samples;
+        renderClusterConfig(d.cluster_config);
+        showToast(`已恢复上次重聚类前状态：${d.restored_faces} 张人脸、${d.restored_people} 个人物名`,"success");
+        await loadPeople();
+      }finally{
+        setLoading("btnClusterRollback",false);
+      }
+    }
+
+    async function loadPeople(){
+      const d=await fetchJson("/api/people");
+      if(d.status!=="success")return showToast("人物库加载失败。","error");
+      state.currentClusterConfig=d.cluster_config;
+      updateClusterSnapshotState(d.has_cluster_snapshot);
+      renderClusterConfig(d.cluster_config);
+      renderPeople(d.people||[]);
+      renderUnassigned(d.unassigned||[]);
+    }
+
+    function renderPeople(people){
+      const c=document.getElementById("peopleGrid");
+      if(!people.length){
+        c.innerHTML=`<div class="rounded-2xl bg-white/70 p-4 text-sm text-slate-500">当前没有已聚类人物。</div>`;
+        return;
+      }
+      c.innerHTML="";
+      people.forEach(p=>{
+        const d=document.createElement("div");
+        d.className="rounded-3xl bg-white/70 p-4 shadow-sm";
+        d.ondragover=e=>{e.preventDefault();d.classList.add("ring-2","ring-teal-500");};
+        d.ondragleave=()=>d.classList.remove("ring-2","ring-teal-500");
+        d.ondrop=e=>handleDrop(e,p.person_id);
+        d.innerHTML=`<div draggable="true" ondragstart="event.dataTransfer.setData('source_person_id','${p.person_id}')" class="cursor-grab"><button onclick="openTimelineModal(${p.person_id})" class="w-full text-left"><img src="${p.cover_image}" class="h-44 w-full rounded-2xl object-cover"></button></div><input value="${p.name||`人物 ${p.person_id}`}" onchange="renamePerson(${p.person_id},this.value)" class="mt-3 w-full border-b border-slate-200 bg-transparent pb-2 text-center text-sm font-medium outline-none"><div class="mt-3 flex items-center justify-between text-xs text-slate-500"><span>ID ${p.person_id}</span><span>${p.count} 张</span></div>`;
+        c.appendChild(d);
+      });
+    }
+
+    function renderUnassigned(items){
+      const c=document.getElementById("unassignedGrid");
+      if(!items.length){
+        c.innerHTML=`<div class="text-sm text-slate-400">当前没有未分配人脸。</div>`;
+        return;
+      }
+      c.innerHTML="";
+      items.forEach(item=>{
+        const img=document.createElement("img");
+        img.src=item.image_path||item.image;
+        img.className="h-20 w-20 rounded-2xl object-cover shadow-sm";
+        img.draggable=true;
+        img.ondragstart=e=>e.dataTransfer.setData("face_id",item.id);
+        img.onclick=()=>openDetailModal(item);
+        c.appendChild(img);
+      });
+    }
+
+    async function renamePerson(id,name){
+      await fetchJson("/api/person/rename",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({person_id:id,name})
+      });
+      showToast("人物名称已更新。","success");
+    }
+
+    async function handleDrop(e,target){
+      e.preventDefault();
+      e.currentTarget.classList.remove("ring-2","ring-teal-500");
+      const source=e.dataTransfer.getData("source_person_id");
+      const face=e.dataTransfer.getData("face_id");
+      if(source){
+        if(Number(source)===Number(target))return;
+        await fetchJson("/api/person/merge",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({source_person_id:Number(source),target_person_id:Number(target)})
+        });
+        showToast("人物已合并。","success");
+      }else if(face){
+        await fetchJson("/api/face/reassign",{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({face_id:Number(face),target_person_id:Number(target)})
+        });
+        showToast("人脸已重新归类。","success");
+      }
+      await loadPeople();
+    }
+
+    function openDetailModal(item){
+      document.getElementById("modalImg").src=item.full_image||item.full_image_path||item.image||item.image_path||"";
+      document.getElementById("modalSemantic").textContent=safeText(item.semantic_text||item.description);
+      document.getElementById("modalVisual").textContent=safeText(item.visual_text);
+      document.getElementById("modalSpeech").textContent=safeText(item.speech_text);
+      document.getElementById("modalPost").textContent=safeText(item.post_text);
+      document.getElementById("modalType").textContent=safeText(item.content_type);
+      document.getElementById("modalTime").textContent=item.content_type==="video"?formatTime(item.timestamp):"图文内容";
+      document.getElementById("modalSource").textContent=safeText((item.semantic_source||[]).join(", "));
+      const c=item.cluster_config||state.currentClusterConfig||{};
+      document.getElementById("modalCluster").textContent=c.algorithm?`${c.algorithm} / ${c.metric} / eps ${c.eps} / min_samples ${c.min_samples}`:"暂无";
+      const a=document.getElementById("modalLink");
+      a.href=item.link_url||item.source_url||"#";
+      a.textContent=item.content_type==="video"?"跳转视频对应时间点":"跳转原始内容";
+      document.getElementById("detailModal").classList.remove("pointer-events-none","opacity-0");
+      syncModalState();
+    }
+
+    function closeDetailModal(){
+      document.getElementById("detailModal").classList.add("pointer-events-none","opacity-0");
+      syncModalState();
+    }
+
+    async function openTimelineModal(personId){
+      document.getElementById("timelineTitle").textContent=`人物档案 #${personId}`;
+      document.getElementById("timelineContent").innerHTML=`<div class="rounded-2xl bg-white/70 p-4 text-sm text-slate-500">加载中...</div>`;
+      document.getElementById("timelineModal").classList.remove("pointer-events-none","opacity-0");
+      syncModalState();
+      const d=await fetchJson(`/api/person/${personId}`);
+      state.timelineItems=d.timeline||[];
+      const c=document.getElementById("timelineContent");
+      if(!state.timelineItems.length){
+        c.innerHTML=`<div class="rounded-2xl bg-white/70 p-4 text-sm text-slate-500">暂无时间线数据。</div>`;
+        return;
+      }
+      c.innerHTML="";
+      state.timelineItems.forEach((item,i)=>{
+        const row=document.createElement("div");
+        row.className="mb-4 rounded-3xl bg-white/70 p-4 shadow-sm";
+        row.innerHTML=`<div class="grid gap-4 md:grid-cols-[160px_1fr] lg:grid-cols-[180px_1fr]"><img src="${item.full_image||item.full_image_path||item.image}" class="h-28 w-full rounded-2xl object-cover sm:h-32"><div class="min-w-0"><div class="flex flex-wrap items-center gap-2"><span class="rounded-full bg-slate-100 px-3 py-1 text-xs">${safeText(item.platform||"unknown")}</span><span class="rounded-full bg-slate-100 px-3 py-1 text-xs">${item.content_type==="video"?formatTime(item.timestamp):"图文内容"}</span></div><p class="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">${safeText(item.semantic_text||item.description)}</p><div class="mt-3 flex flex-wrap gap-3"><button data-index="${i}" class="detail-btn rounded-2xl bg-slate-950 px-4 py-2 text-sm text-white">查看详情</button><a href="${item.link_url||item.source_url||"#"}" target="_blank" class="rounded-2xl bg-teal-700 px-4 py-2 text-sm text-white">打开原始内容</a></div></div></div>`;
+        c.appendChild(row);
+      });
+      c.querySelectorAll(".detail-btn").forEach(b=>b.addEventListener("click",()=>openDetailModal(state.timelineItems[Number(b.dataset.index)])));
+    }
+
+    function closeTimelineModal(){
+      document.getElementById("timelineModal").classList.add("pointer-events-none","opacity-0");
+      syncModalState();
+    }
+
+    window.addEventListener("keydown",e=>{
+      if(e.key!=="Escape")return;
+      closeDetailModal();
+      closeTimelineModal();
+      closeClusterModeModal();
+      closeDangerModal();
+    });
+
+    window.addEventListener("DOMContentLoaded",()=>{
+      renderResults([]);
+      loadSystemStatus();
+    });
+  </script>
 </body>
-
 </html>
