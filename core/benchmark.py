@@ -13,8 +13,10 @@ from core.clustering import evaluate_embedding_clusters, evaluate_embedding_retr
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
 DEFAULT_FACE_QUALITY_GRID = {
     "min_face_size": [40, 56, 72],
+    "min_face_ratio": [0.02, 0.035, 0.05],
     "min_laplacian_var": [0, 50, 80, 120],
     "max_pose_deviation": [0.25, 0.35, 0.45],
+    "blur_eval_size": [96],
 }
 
 
@@ -45,33 +47,51 @@ def normalize_face_quality_config(face_quality_config=None):
     return {
         "enabled": bool(raw.get("enabled", True)),
         "min_face_size": int(raw.get("min_face_size", 56)),
+        "min_face_ratio": float(raw.get("min_face_ratio", 0.035)),
         "min_laplacian_var": float(raw.get("min_laplacian_var", 80.0)),
         "max_pose_deviation": float(raw.get("max_pose_deviation", 0.35)),
+        "blur_eval_size": int(raw.get("blur_eval_size", 96)),
     }
 
 
 def build_face_quality_grid(
     min_face_size_values=None,
+    min_face_ratio_values=None,
     min_laplacian_var_values=None,
     max_pose_deviation_values=None,
+    blur_eval_size_values=None,
 ):
     sizes = list(min_face_size_values or DEFAULT_FACE_QUALITY_GRID["min_face_size"])
+    ratios = list(
+        min_face_ratio_values or DEFAULT_FACE_QUALITY_GRID["min_face_ratio"]
+    )
     blurs = list(
         min_laplacian_var_values or DEFAULT_FACE_QUALITY_GRID["min_laplacian_var"]
     )
     poses = list(
         max_pose_deviation_values or DEFAULT_FACE_QUALITY_GRID["max_pose_deviation"]
     )
+    blur_eval_sizes = list(
+        blur_eval_size_values or DEFAULT_FACE_QUALITY_GRID["blur_eval_size"]
+    )
     return [
         normalize_face_quality_config(
             {
                 "enabled": True,
                 "min_face_size": size,
+                "min_face_ratio": ratio,
                 "min_laplacian_var": blur,
                 "max_pose_deviation": pose,
+                "blur_eval_size": blur_eval_size,
             }
         )
-        for size, blur, pose in product(sizes, blurs, poses)
+        for size, ratio, blur, pose, blur_eval_size in product(
+            sizes,
+            ratios,
+            blurs,
+            poses,
+            blur_eval_sizes,
+        )
     ]
 
 
@@ -268,7 +288,8 @@ def _quality_cache_path(cache_dir, config):
         return None
     config = normalize_face_quality_config(config)
     return Path(cache_dir) / (
-        f"facesize_{config['min_face_size']}_blur_{config['min_laplacian_var']:.0f}"
+        f"facesize_{config['min_face_size']}_ratio_{config['min_face_ratio']:.3f}"
+        f"_blur_{config['min_laplacian_var']:.0f}_eval_{config['blur_eval_size']}"
         f"_pose_{config['max_pose_deviation']:.2f}.npz"
     )
 
@@ -283,6 +304,7 @@ def recommend_face_quality(quality_results):
             row.get("balanced_score") or 0.0,
             -(row.get("failure_rate") or 1.0),
             -(row.get("min_face_size") or 0),
+            -(row.get("min_face_ratio") or 0.0),
             -(row.get("min_laplacian_var") or 0.0),
             row.get("max_pose_deviation") or 0.0,
         )
@@ -291,8 +313,10 @@ def recommend_face_quality(quality_results):
     return {
         "enabled": True,
         "min_face_size": int(best["min_face_size"]),
+        "min_face_ratio": float(best.get("min_face_ratio", 0.035)),
         "min_laplacian_var": float(best["min_laplacian_var"]),
         "max_pose_deviation": float(best["max_pose_deviation"]),
+        "blur_eval_size": int(best.get("blur_eval_size", 96)),
     }
 
 
@@ -360,8 +384,10 @@ def evaluate_face_quality_grid(
             {
                 "enabled": True,
                 "min_face_size": int(config["min_face_size"]),
+                "min_face_ratio": float(config["min_face_ratio"]),
                 "min_laplacian_var": float(config["min_laplacian_var"]),
                 "max_pose_deviation": float(config["max_pose_deviation"]),
+                "blur_eval_size": int(config["blur_eval_size"]),
                 "samples_kept": kept_samples,
                 "failed_samples": int(len(failures)),
                 "failure_rate": failure_rate,
@@ -472,8 +498,10 @@ def export_benchmark_results(
             fieldnames=[
                 "enabled",
                 "min_face_size",
+                "min_face_ratio",
                 "min_laplacian_var",
                 "max_pose_deviation",
+                "blur_eval_size",
                 "samples_kept",
                 "failed_samples",
                 "failure_rate",

@@ -107,8 +107,10 @@ class AppApiTests(unittest.TestCase):
             json={
                 "enabled": True,
                 "min_face_size": 72,
+                "min_face_ratio": 0.04,
                 "min_laplacian_var": 120,
                 "max_pose_deviation": 0.45,
+                "blur_eval_size": 128,
             },
         ).json()
         bad_login_payload = self.client.post("/api/admin/login", json={"password": "wrong-password"}).json()
@@ -118,8 +120,10 @@ class AppApiTests(unittest.TestCase):
             json={
                 "enabled": True,
                 "min_face_size": 72,
+                "min_face_ratio": 0.04,
                 "min_laplacian_var": 120,
                 "max_pose_deviation": 0.45,
+                "blur_eval_size": 128,
             },
         ).json()
 
@@ -129,6 +133,8 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(good_login_payload["status"], "success")
         self.assertEqual(update_payload["status"], "success")
         self.assertEqual(update_payload["face_quality_config"]["min_face_size"], 72)
+        self.assertEqual(update_payload["face_quality_config"]["min_face_ratio"], 0.04)
+        self.assertEqual(update_payload["face_quality_config"]["blur_eval_size"], 128)
 
     def test_public_endpoints_remain_available_without_admin_login(self):
         self._setup_admin()
@@ -244,8 +250,10 @@ class AppApiTests(unittest.TestCase):
                 "face_quality": {
                     "enabled": False,
                     "min_face_size": 64,
+                    "min_face_ratio": 0.025,
                     "min_laplacian_var": 100,
                     "max_pose_deviation": 0.4,
+                    "blur_eval_size": 128,
                 },
             },
         ).json()
@@ -257,6 +265,10 @@ class AppApiTests(unittest.TestCase):
         invalid_hotwords_payload = self.client.post(
             "/api/system/config",
             json={"transcription": {"hotwords": {"bad": "shape"}}},
+        ).json()
+        invalid_face_ratio_payload = self.client.post(
+            "/api/system/config",
+            json={"face_quality": {"min_face_size": 64, "min_face_ratio": 0.8}},
         ).json()
         status_payload = self.client.get("/api/system/status").json()
         saved_config = json.loads(app_config.system_config_path.read_text(encoding="utf-8"))
@@ -295,9 +307,18 @@ class AppApiTests(unittest.TestCase):
             ["发布会", "路演", "采访"],
         )
         self.assertFalse(success_payload["runtime_config"]["face_quality"]["enabled"])
+        self.assertEqual(
+            success_payload["runtime_config"]["face_quality"]["min_face_ratio"],
+            0.025,
+        )
+        self.assertEqual(
+            success_payload["runtime_config"]["face_quality"]["blur_eval_size"],
+            128,
+        )
 
         self.assertEqual(invalid_payload["status"], "error")
         self.assertEqual(invalid_hotwords_payload["status"], "error")
+        self.assertEqual(invalid_face_ratio_payload["status"], "error")
         self.assertEqual(status_payload["runtime_config"]["search"]["text_threshold"], 0.25)
         self.assertEqual(saved_config["search"]["text_threshold"], 0.25)
         self.assertEqual(saved_config["search"]["semantic_model_prompt_name"], "query")

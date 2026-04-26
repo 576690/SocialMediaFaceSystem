@@ -52,8 +52,10 @@ DEFAULT_CONFIG = {
     "face_quality": {
         "enabled": True,
         "min_face_size": 56,
+        "min_face_ratio": 0.035,
         "min_laplacian_var": 80.0,
         "max_pose_deviation": 0.35,
+        "blur_eval_size": 96,
     },
     "clustering": {
         "algorithm": "dbscan",
@@ -355,11 +357,14 @@ class AppConfig:
         return bool(self.data["vision"]["caption_include_ocr_hint"])
 
     def face_quality_config(self):
+        face_quality = self.data["face_quality"]
         return {
-            "enabled": bool(self.data["face_quality"]["enabled"]),
-            "min_face_size": int(self.data["face_quality"]["min_face_size"]),
-            "min_laplacian_var": float(self.data["face_quality"]["min_laplacian_var"]),
-            "max_pose_deviation": float(self.data["face_quality"]["max_pose_deviation"]),
+            "enabled": bool(face_quality["enabled"]),
+            "min_face_size": int(face_quality["min_face_size"]),
+            "min_face_ratio": float(face_quality.get("min_face_ratio", 0.035)),
+            "min_laplacian_var": float(face_quality["min_laplacian_var"]),
+            "max_pose_deviation": float(face_quality["max_pose_deviation"]),
+            "blur_eval_size": int(face_quality.get("blur_eval_size", 96)),
         }
 
     def runtime_config(self):
@@ -425,18 +430,24 @@ class AppConfig:
         self,
         enabled=None,
         min_face_size=None,
+        min_face_ratio=None,
         min_laplacian_var=None,
         max_pose_deviation=None,
+        blur_eval_size=None,
     ):
         face_quality = self.data["face_quality"]
         if enabled is not None:
             face_quality["enabled"] = bool(enabled)
         if min_face_size is not None:
             face_quality["min_face_size"] = int(min_face_size)
+        if min_face_ratio is not None:
+            face_quality["min_face_ratio"] = float(min_face_ratio)
         if min_laplacian_var is not None:
             face_quality["min_laplacian_var"] = float(min_laplacian_var)
         if max_pose_deviation is not None:
             face_quality["max_pose_deviation"] = float(max_pose_deviation)
+        if blur_eval_size is not None:
+            face_quality["blur_eval_size"] = int(blur_eval_size)
         self.save()
 
     def cluster_defaults(self):

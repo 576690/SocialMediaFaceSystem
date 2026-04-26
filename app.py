@@ -277,24 +277,37 @@ def _rebuild_runtime_state():
 def _validate_face_quality_payload(data):
     try:
         enabled = bool(data.get("enabled", True))
-        min_face_size = int(data.get("min_face_size"))
-        min_laplacian_var = float(data.get("min_laplacian_var"))
-        max_pose_deviation = float(data.get("max_pose_deviation"))
+        current = app_config.face_quality_config()
+        min_face_size = int(data.get("min_face_size", current["min_face_size"]))
+        min_face_ratio = float(data.get("min_face_ratio", current["min_face_ratio"]))
+        min_laplacian_var = float(
+            data.get("min_laplacian_var", current["min_laplacian_var"])
+        )
+        max_pose_deviation = float(
+            data.get("max_pose_deviation", current["max_pose_deviation"])
+        )
+        blur_eval_size = int(data.get("blur_eval_size", current["blur_eval_size"]))
     except (TypeError, ValueError):
         raise ValueError("Invalid face quality parameters.")
 
     if not 20 <= min_face_size <= 256:
         raise ValueError("min_face_size must be between 20 and 256.")
+    if not 0.0 <= min_face_ratio <= 0.5:
+        raise ValueError("min_face_ratio must be between 0.0 and 0.5.")
     if not 0 <= min_laplacian_var <= 1000:
         raise ValueError("min_laplacian_var must be between 0 and 1000.")
     if not 0.0 <= max_pose_deviation <= 1.0:
         raise ValueError("max_pose_deviation must be between 0.0 and 1.0.")
+    if not 32 <= blur_eval_size <= 512:
+        raise ValueError("blur_eval_size must be between 32 and 512.")
 
     return {
         "enabled": enabled,
         "min_face_size": min_face_size,
+        "min_face_ratio": min_face_ratio,
         "min_laplacian_var": min_laplacian_var,
         "max_pose_deviation": max_pose_deviation,
+        "blur_eval_size": blur_eval_size,
     }
 
 

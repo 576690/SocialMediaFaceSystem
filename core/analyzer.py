@@ -528,12 +528,15 @@ class AIProcessor:
                 resolved[key] = value
         resolved["enabled"] = bool(resolved.get("enabled", True))
         resolved["min_face_size"] = int(resolved.get("min_face_size", 56))
+        resolved["min_face_ratio"] = float(resolved.get("min_face_ratio", 0.035))
         resolved["min_laplacian_var"] = float(resolved.get("min_laplacian_var", 80.0))
         resolved["max_pose_deviation"] = float(resolved.get("max_pose_deviation", 0.35))
+        resolved["blur_eval_size"] = int(resolved.get("blur_eval_size", 96))
         return resolved
 
     def _extract_face_region(self, frame_bgr, face):
         height, width = frame_bgr.shape[:2]
+        frame_min_side = max(int(min(width, height)), 1)
         bbox = np.asarray(face.bbox, dtype=int)
         x1 = max(0, int(bbox[0]))
         y1 = max(0, int(bbox[1]))
@@ -552,12 +555,25 @@ class AIProcessor:
             "width": int(x2 - x1),
             "height": int(y2 - y1),
             "min_side": int(min(x2 - x1, y2 - y1)),
+            "frame_width": int(width),
+            "frame_height": int(height),
+            "frame_min_side": frame_min_side,
+            "face_ratio": float(min(x2 - x1, y2 - y1) / frame_min_side),
             "area": int(max(x2 - x1, 0) * max(y2 - y1, 0)),
         }
 
-    def _compute_laplacian_variance(self, face_img):
+    def _compute_laplacian_variance(self, face_img, blur_eval_size=96):
         if face_img is None or face_img.size == 0:
             return 0.0
+        eval_size = max(int(blur_eval_size or 96), 1)
+        if face_img.shape[0] != eval_size or face_img.shape[1] != eval_size:
+            face_img = cv2.resize(
+                face_img,
+                (eval_size, eval_size),
+                interpolation=cv2.INTER_AREA
+                if face_img.shape[0] > eval_size or face_img.shape[1] > eval_size
+                else cv2.INTER_LINEAR,
+            )
         gray = cv2.cvtColor(face_img, cv2.COLOR_BGR2GRAY)
         return float(cv2.Laplacian(gray, cv2.CV_64F).var())
 
@@ -615,23 +631,20 @@ class AIProcessor:
                 },
             }
 
-        laplacian_var = self._compute_laplacian_variance(region["face_img"])
+        laplacian_var = self._compute_laplacian_variance(
+            region["face_img"],
+            blur_eval_size=quality_config["blur_eval_size"],
+        )
         pose_deviation = self._compute_pose_deviation(face, region["bbox"])
         metrics = {
             "min_face_size": region["min_side"],
+            "face_ratio": region["face_ratio"],
+            "frame_min_side": region["frame_min_side"],
+            "blur_eval_size": quality_config["blur_eval_size"],
             "laplacian_var": laplacian_var,
             "pose_deviation": pose_deviation,
             "area": region["area"],
         }
-
-        if region["min_side"] < 40:
-            return {
-                **region,
-                "accepted": False,
-                "reason": "filtered_min_face_size",
-                "embedding": getattr(face, "embedding", None),
-                "metrics": metrics,
-            }
 
         if quality_config["enabled"]:
             if region["min_side"] < quality_config["min_face_size"]:
@@ -639,6 +652,14 @@ class AIProcessor:
                     **region,
                     "accepted": False,
                     "reason": "filtered_min_face_size",
+                    "embedding": getattr(face, "embedding", None),
+                    "metrics": metrics,
+                }
+            if region["face_ratio"] < quality_config["min_face_ratio"]:
+                return {
+                    **region,
+                    "accepted": False,
+                    "reason": "filtered_min_face_ratio",
                     "embedding": getattr(face, "embedding", None),
                     "metrics": metrics,
                 }

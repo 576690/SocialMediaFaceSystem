@@ -92,6 +92,76 @@ class FaceQualityTests(unittest.TestCase):
         self.assertEqual(candidates[1]["reason"], "filtered_blur")
         self.assertEqual(candidates[2]["reason"], "filtered_pose")
 
+    def test_face_ratio_filters_same_pixel_face_in_larger_frame(self):
+        small_frame = np.random.default_rng(4).integers(0, 255, size=(200, 200, 3), dtype=np.uint8)
+        large_frame = np.random.default_rng(5).integers(0, 255, size=(2000, 2000, 3), dtype=np.uint8)
+        face = _make_face([20, 20, 76, 76])
+        quality_config = {
+            "enabled": True,
+            "min_face_size": 56,
+            "min_face_ratio": 0.035,
+            "min_laplacian_var": 0,
+            "max_pose_deviation": 1.0,
+            "blur_eval_size": 96,
+        }
+
+        small_candidate = self.processor.filter_face_candidates(
+            small_frame,
+            faces=[face],
+            face_quality_config=quality_config,
+        )[0]
+        large_candidate = self.processor.filter_face_candidates(
+            large_frame,
+            faces=[face],
+            face_quality_config=quality_config,
+        )[0]
+
+        self.assertTrue(small_candidate["accepted"])
+        self.assertEqual(large_candidate["reason"], "filtered_min_face_ratio")
+        self.assertGreaterEqual(small_candidate["metrics"]["face_ratio"], 0.035)
+        self.assertLess(large_candidate["metrics"]["face_ratio"], 0.035)
+
+    def test_pixel_floor_still_filters_small_face_with_large_ratio(self):
+        image = np.random.default_rng(6).integers(0, 255, size=(100, 100, 3), dtype=np.uint8)
+        face = _make_face([10, 10, 50, 50])
+
+        candidate = self.processor.filter_face_candidates(
+            image,
+            faces=[face],
+            face_quality_config={
+                "enabled": True,
+                "min_face_size": 56,
+                "min_face_ratio": 0.035,
+                "min_laplacian_var": 0,
+                "max_pose_deviation": 1.0,
+                "blur_eval_size": 96,
+            },
+        )[0]
+
+        self.assertEqual(candidate["reason"], "filtered_min_face_size")
+        self.assertGreater(candidate["metrics"]["face_ratio"], 0.035)
+
+    def test_laplacian_metrics_include_normalized_eval_size(self):
+        image = np.random.default_rng(7).integers(0, 255, size=(180, 180, 3), dtype=np.uint8)
+        face = _make_face([20, 20, 100, 120])
+
+        candidate = self.processor.filter_face_candidates(
+            image,
+            faces=[face],
+            face_quality_config={
+                "enabled": True,
+                "min_face_size": 56,
+                "min_face_ratio": 0.035,
+                "min_laplacian_var": 0,
+                "max_pose_deviation": 1.0,
+                "blur_eval_size": 64,
+            },
+        )[0]
+
+        self.assertTrue(candidate["accepted"])
+        self.assertEqual(candidate["metrics"]["blur_eval_size"], 64)
+        self.assertIn("frame_min_side", candidate["metrics"])
+
     def test_disabling_quality_filter_keeps_blurry_medium_face(self):
         image = np.full((160, 160, 3), 80, dtype=np.uint8)
         faces = [_make_face([40, 40, 90, 95])]

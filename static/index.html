@@ -299,7 +299,7 @@
 
                 <div class="rounded-3xl bg-white/70 p-4">
                   <h3 class="ui font-bold">检索参数</h3>
-                  <div class="mt-3 grid gap-3 md:grid-cols-4">
+                  <div class="mt-3 grid gap-3 md:grid-cols-3">
                     <label class="text-sm text-slate-600">文本阈值
                       <input id="configTextThreshold" type="number" min="0" max="1" step="0.01"
                         class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
@@ -370,7 +370,7 @@
                         disabled>回退</button>
                     </div>
                   </div>
-                  <div class="mt-3 grid gap-3 md:grid-cols-4">
+                  <div class="mt-3 grid gap-3 md:grid-cols-3">
                     <select id="clusterAlgorithm" class="rounded-xl border border-slate-200 bg-white px-3 py-2">
                       <option value="dbscan">DBSCAN</option>
                       <option value="hdbscan">HDBSCAN</option>
@@ -389,7 +389,7 @@
 
                 <div class="rounded-3xl bg-white/70 p-4">
                   <h3 class="ui font-bold">人脸过滤参数</h3>
-                  <div class="mt-3 grid gap-3 md:grid-cols-4">
+                  <div class="mt-3 grid gap-3 md:grid-cols-3">
                     <label class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">
                       启用过滤
                       <input id="faceQualityEnabled" type="checkbox" class="h-4 w-4">
@@ -398,8 +398,16 @@
                       <input id="faceQualityMinSize" type="number" min="20" max="256"
                         class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
                     </label>
+                    <label class="text-sm text-slate-600">最小画面占比
+                      <input id="faceQualityMinRatio" type="number" min="0" max="0.5" step="0.005"
+                        class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                    </label>
                     <label class="text-sm text-slate-600">清晰度阈值
                       <input id="faceQualityMinBlur" type="number" min="0" max="1000" step="1"
+                        class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                    </label>
+                    <label class="text-sm text-slate-600">清晰度评估尺寸
+                      <input id="faceQualityBlurEvalSize" type="number" min="32" max="512" step="1"
                         class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
                     </label>
                     <label class="text-sm text-slate-600">姿态偏差
@@ -753,7 +761,9 @@
       state.faceQualityConfig = config;
       document.getElementById("faceQualityEnabled").checked = Boolean(config.enabled);
       document.getElementById("faceQualityMinSize").value = config.min_face_size;
+      document.getElementById("faceQualityMinRatio").value = config.min_face_ratio || 0;
       document.getElementById("faceQualityMinBlur").value = config.min_laplacian_var;
+      document.getElementById("faceQualityBlurEvalSize").value = config.blur_eval_size || 96;
       document.getElementById("faceQualityMaxPose").value = config.max_pose_deviation;
     }
 
@@ -935,7 +945,9 @@
         face_quality: {
           enabled: document.getElementById("faceQualityEnabled").checked,
           min_face_size: Number(document.getElementById("faceQualityMinSize").value),
+          min_face_ratio: Number(document.getElementById("faceQualityMinRatio").value),
           min_laplacian_var: Number(document.getElementById("faceQualityMinBlur").value),
+          blur_eval_size: Number(document.getElementById("faceQualityBlurEvalSize").value),
           max_pose_deviation: Number(document.getElementById("faceQualityMaxPose").value)
         }
       };

@@ -103,8 +103,10 @@ class BenchmarkTests(unittest.TestCase):
                     {
                         "enabled": True,
                         "min_face_size": 56,
+                        "min_face_ratio": 0.035,
                         "min_laplacian_var": 80.0,
                         "max_pose_deviation": 0.35,
+                        "blur_eval_size": 96,
                         "samples_kept": 4,
                         "failed_samples": 0,
                         "failure_rate": 0.0,
@@ -142,13 +144,17 @@ class BenchmarkTests(unittest.TestCase):
                 face_quality_config={
                     "enabled": True,
                     "min_face_size": 72,
+                    "min_face_ratio": 0.04,
                     "min_laplacian_var": 120,
                     "max_pose_deviation": 0.45,
+                    "blur_eval_size": 128,
                 },
             )
 
             self.assertEqual(payload["embeddings"].shape, (1, 2))
             self.assertEqual(seen["config"]["min_face_size"], 72)
+            self.assertEqual(seen["config"]["min_face_ratio"], 0.04)
+            self.assertEqual(seen["config"]["blur_eval_size"], 128)
 
     def test_evaluate_face_quality_grid_and_recommendation(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -179,14 +185,18 @@ class BenchmarkTests(unittest.TestCase):
                     {
                         "enabled": True,
                         "min_face_size": 56,
+                        "min_face_ratio": 0.035,
                         "min_laplacian_var": 80.0,
                         "max_pose_deviation": 0.35,
+                        "blur_eval_size": 96,
                     },
                     {
                         "enabled": True,
                         "min_face_size": 72,
+                        "min_face_ratio": 0.035,
                         "min_laplacian_var": 80.0,
                         "max_pose_deviation": 0.35,
+                        "blur_eval_size": 96,
                     },
                 ],
                 embedding_extractor=fake_extractor,
@@ -200,6 +210,14 @@ class BenchmarkTests(unittest.TestCase):
             self.assertEqual(
                 recommend_face_quality(quality_payload["results"])["min_face_size"],
                 56,
+            )
+            self.assertIn(
+                "min_face_ratio",
+                quality_payload["recommended_face_quality"],
+            )
+            self.assertEqual(
+                quality_payload["recommended_face_quality"]["blur_eval_size"],
+                96,
             )
 
 
