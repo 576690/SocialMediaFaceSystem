@@ -1,12 +1,16 @@
 import json
 import os
+import secrets
 import threading
 from contextlib import contextmanager
 from pathlib import Path
 
+# Default to the domestic mirror unless the process already selected an endpoint.
+os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+
 import cv2
 import numpy as np
-from fastapi import BackgroundTasks, Body, FastAPI, File, UploadFile
+from fastapi import BackgroundTasks, Body, FastAPI, File, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -30,6 +34,10 @@ collector = VideoCollector()
 _task_state = {"active": 0, "maintenance": False}
 _task_state_lock = threading.Lock()
 _task_local = threading.local()
+_admin_sessions = set()
+_admin_sessions_lock = threading.Lock()
+_admin_cookie_name = "face_admin_session"
+_admin_session_seconds = 8 * 60 * 60
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/faces", StaticFiles(directory=str(app_config.faces_dir)), name="faces")
@@ -80,9 +88,62 @@ def _system_status_payload():
         "status": "success",
         "cluster_config": app_config.cluster_defaults(),
         "face_quality_config": app_config.face_quality_config(),
+        "runtime_config": app_config.runtime_config(),
         "has_cluster_snapshot": db.has_cluster_snapshot(),
         "sources": db.list_collection_sources(),
     }
+
+
+def _create_admin_session(response: Response):
+    token = secrets.token_urlsafe(32)
+    with _admin_sessions_lock:
+        _admin_sessions.add(token)
+    response.set_cookie(
+        _admin_cookie_name,
+        token,
+        max_age=_admin_session_seconds,
+        httponly=True,
+        samesite="lax",
+    )
+
+
+def _clear_admin_session(request: Request, response: Response):
+    token = request.cookies.get(_admin_cookie_name)
+    if token:
+        with _admin_sessions_lock:
+            _admin_sessions.discard(token)
+    response.delete_cookie(_admin_cookie_name)
+
+
+def _clear_all_admin_sessions():
+    with _admin_sessions_lock:
+        _admin_sessions.clear()
+
+
+def _is_admin_authenticated(request: Request):
+    token = request.cookies.get(_admin_cookie_name)
+    if not token:
+        return False
+    with _admin_sessions_lock:
+        return token in _admin_sessions
+
+
+def _admin_status_payload(request: Request):
+    return {
+        "status": "success",
+        "admin_initialized": app_config.has_admin_password(),
+        "admin_authenticated": _is_admin_authenticated(request),
+    }
+
+
+def _require_admin(request: Request):
+    if app_config.has_admin_password() and _is_admin_authenticated(request):
+        return None
+    if not app_config.has_admin_password():
+        message = "Admin password is not set."
+    else:
+        message = "Admin authentication required."
+    return {"status": "error", "message": message, "admin_required": True}
 
 
 def _active_task_count():
@@ -152,7 +213,7 @@ def _maintenance_guard():
 
 def _remove_runtime_storage():
     removed_files_count = 0
-    for directory in app_config.managed_runtime_dirs():
+    for directory in app_config.managed_runtime_dirs(include_videos=False):
         directory.mkdir(parents=True, exist_ok=True)
         paths = sorted(
             directory.rglob("*"),
@@ -226,6 +287,226 @@ def _validate_face_quality_payload(data):
         "min_laplacian_var": min_laplacian_var,
         "max_pose_deviation": max_pose_deviation,
     }
+
+
+def _validate_runtime_config_payload(data):
+    payload = data or {}
+    updates = {}
+
+    processing = payload.get("processing") or {}
+    if processing:
+        try:
+            frame_sample_seconds = float(processing.get("frame_sample_seconds"))
+        except (TypeError, ValueError):
+            raise ValueError("frame_sample_seconds must be a number.")
+        if not 0.2 <= frame_sample_seconds <= 30:
+            raise ValueError("frame_sample_seconds must be between 0.2 and 30.")
+        updates["processing"] = {"frame_sample_seconds": frame_sample_seconds}
+
+    search = payload.get("search") or {}
+    if search:
+        try:
+            text_threshold = float(search.get("text_threshold"))
+            image_cosine_threshold = float(search.get("image_cosine_threshold"))
+            image_top_k = int(search.get("image_top_k"))
+            text_top_k = int(search.get("text_top_k"))
+            semantic_model_id = str(
+                search.get("semantic_model_id") or app_config.semantic_model_id
+            ).strip()
+            semantic_model_prompt_name = str(
+                search.get("semantic_model_prompt_name")
+                or app_config.semantic_model_prompt_name
+            ).strip()
+            semantic_model_mode = str(
+                search.get("semantic_model_mode") or app_config.semantic_model_mode
+            ).strip()
+            semantic_corpus_style = str(
+                search.get("semantic_corpus_style") or app_config.semantic_corpus_style
+            ).strip()
+        except (TypeError, ValueError):
+            raise ValueError("Invalid search parameters.")
+        if not 0 <= text_threshold <= 1:
+            raise ValueError("text_threshold must be between 0 and 1.")
+        if not 0 <= image_cosine_threshold <= 1:
+            raise ValueError("image_cosine_threshold must be between 0 and 1.")
+        if not 1 <= image_top_k <= 100:
+            raise ValueError("image_top_k must be between 1 and 100.")
+        if not 1 <= text_top_k <= 100:
+            raise ValueError("text_top_k must be between 1 and 100.")
+        if not semantic_model_id:
+            raise ValueError("semantic_model_id is required.")
+        if semantic_model_mode not in {"standard", "qwen3_4b_int4_experimental"}:
+            raise ValueError("Unsupported semantic_model_mode.")
+        if semantic_corpus_style not in {"structured_zh"}:
+            raise ValueError("Unsupported semantic_corpus_style.")
+        updates["search"] = {
+            "text_threshold": text_threshold,
+            "image_cosine_threshold": image_cosine_threshold,
+            "image_top_k": image_top_k,
+            "text_top_k": text_top_k,
+            "semantic_model_id": semantic_model_id,
+            "semantic_model_prompt_name": semantic_model_prompt_name,
+            "semantic_model_mode": semantic_model_mode,
+            "semantic_corpus_style": semantic_corpus_style,
+        }
+
+    collection = payload.get("collection") or {}
+    if collection:
+        try:
+            source_sync_limit = int(collection.get("source_sync_limit"))
+            weibo_cookie_enabled = bool(collection.get("weibo_cookie_enabled"))
+            weibo_source_sync_limit = int(collection.get("weibo_source_sync_limit"))
+            weibo_timeout_seconds = int(collection.get("weibo_timeout_seconds"))
+            weibo_retry_count = int(collection.get("weibo_retry_count"))
+            bilibili_cookie_enabled = bool(
+                collection.get(
+                    "bilibili_cookie_enabled",
+                    app_config.bilibili_cookie_enabled,
+                )
+            )
+            bilibili_impersonate = str(
+                collection.get("bilibili_impersonate", app_config.bilibili_impersonate)
+                or ""
+            ).strip()
+            bilibili_referer = str(
+                collection.get("bilibili_referer", app_config.bilibili_referer) or ""
+            ).strip()
+        except (TypeError, ValueError):
+            raise ValueError("Invalid collection parameters.")
+        if not 1 <= source_sync_limit <= 100:
+            raise ValueError("source_sync_limit must be between 1 and 100.")
+        if not 1 <= weibo_source_sync_limit <= 100:
+            raise ValueError("weibo_source_sync_limit must be between 1 and 100.")
+        if not 5 <= weibo_timeout_seconds <= 120:
+            raise ValueError("weibo_timeout_seconds must be between 5 and 120.")
+        if not 1 <= weibo_retry_count <= 10:
+            raise ValueError("weibo_retry_count must be between 1 and 10.")
+        if not bilibili_impersonate:
+            raise ValueError("bilibili_impersonate is required.")
+        if not bilibili_referer:
+            raise ValueError("bilibili_referer is required.")
+        updates["collection"] = {
+            "source_sync_limit": source_sync_limit,
+            "weibo_cookie_enabled": weibo_cookie_enabled,
+            "weibo_source_sync_limit": weibo_source_sync_limit,
+            "weibo_timeout_seconds": weibo_timeout_seconds,
+            "weibo_retry_count": weibo_retry_count,
+            "bilibili_cookie_enabled": bilibili_cookie_enabled,
+            "bilibili_impersonate": bilibili_impersonate,
+            "bilibili_referer": bilibili_referer,
+        }
+
+    transcription = payload.get("transcription") or {}
+    if transcription:
+        preferred_backend = str(
+            transcription.get("preferred_backend") or app_config.transcription_backend
+        ).strip()
+        model_size = str(
+            transcription.get("model_size") or app_config.transcription_model_size
+        ).strip()
+        initial_prompt = str(
+            transcription.get("initial_prompt") or app_config.transcription_initial_prompt
+        ).strip()
+        hotwords = transcription.get("hotwords", app_config.transcription_hotwords)
+        if isinstance(hotwords, str):
+            hotword_values = [
+                item.strip()
+                for item in hotwords.replace("\n", ",").split(",")
+            ]
+        elif isinstance(hotwords, list):
+            hotword_values = [str(item).strip() for item in hotwords]
+        else:
+            raise ValueError("hotwords must be a list or comma-separated string.")
+        hotword_values = [item for item in hotword_values if item]
+        if preferred_backend not in {"faster_whisper", "whisper"}:
+            raise ValueError("Unsupported transcription backend.")
+        if model_size not in {
+            "tiny",
+            "base",
+            "small",
+            "medium",
+            "large",
+            "large-v2",
+            "large-v3",
+        }:
+            raise ValueError("Unsupported transcription model_size.")
+        updates["transcription"] = {
+            "enabled": bool(
+                transcription.get("enabled", app_config.transcription_enabled)
+            ),
+            "preferred_backend": preferred_backend,
+            "model_size": model_size,
+            "initial_prompt": initial_prompt,
+            "hotwords": hotword_values,
+        }
+
+    vision = payload.get("vision") or {}
+    if vision:
+        vlm_model_id = str(vision.get("vlm_model_id") or app_config.vlm_model_id).strip()
+        caption_style = str(
+            vision.get("caption_style") or app_config.caption_style
+        ).strip()
+        caption_language = str(
+            vision.get("caption_language") or app_config.caption_language
+        ).strip()
+        if not vlm_model_id:
+            raise ValueError("vlm_model_id is required.")
+        if caption_style not in {"retrieval_keywords", "detailed_caption"}:
+            raise ValueError("Unsupported caption_style.")
+        if caption_language not in {"zh", "en"}:
+            raise ValueError("Unsupported caption_language.")
+        updates["vision"] = {
+            "vlm_model_id": vlm_model_id,
+            "release_vlm_after_task": bool(
+                vision.get("release_vlm_after_task", app_config.release_vlm_after_task)
+            ),
+            "release_text_encoder_before_vlm": bool(
+                vision.get(
+                    "release_text_encoder_before_vlm",
+                    app_config.release_text_encoder_before_vlm,
+                )
+            ),
+            "caption_style": caption_style,
+            "caption_language": caption_language,
+            "caption_include_ocr_hint": bool(
+                vision.get(
+                    "caption_include_ocr_hint",
+                    app_config.caption_include_ocr_hint,
+                )
+            ),
+        }
+
+    clustering = payload.get("clustering") or {}
+    if clustering:
+        try:
+            algorithm = str(clustering.get("algorithm") or "").lower()
+            metric = str(clustering.get("metric") or "").lower()
+            eps = float(clustering.get("eps"))
+            min_samples = int(clustering.get("min_samples"))
+        except (TypeError, ValueError):
+            raise ValueError("Invalid clustering parameters.")
+        if algorithm not in {"dbscan", "hdbscan", "optics"}:
+            raise ValueError("Unsupported clustering algorithm.")
+        if metric not in {"cosine", "euclidean"}:
+            raise ValueError("Unsupported clustering metric.")
+        if not 0.01 <= eps <= 5:
+            raise ValueError("eps must be between 0.01 and 5.")
+        if not 2 <= min_samples <= 50:
+            raise ValueError("min_samples must be between 2 and 50.")
+        updates["clustering"] = {
+            "algorithm": algorithm,
+            "metric": metric,
+            "eps": eps,
+            "min_samples": min_samples,
+        }
+
+    face_quality = payload.get("face_quality") or {}
+    if face_quality:
+        updates["face_quality"] = _validate_face_quality_payload(face_quality)
+
+    if not updates:
+        raise ValueError("No supported configuration fields were provided.")
+    return updates
 
 
 def _serialize_face(record):
@@ -606,8 +887,59 @@ async def system_status():
     return _system_status_payload()
 
 
+@app.get("/api/admin/status")
+async def admin_status(request: Request):
+    return _admin_status_payload(request)
+
+
+@app.post("/api/admin/setup")
+async def admin_setup(response: Response, data: dict = Body(default={})):
+    if app_config.has_admin_password():
+        return {"status": "error", "message": "Admin password is already set."}
+    try:
+        password = data.get("password", "")
+        app_config.set_admin_password(password)
+        _create_admin_session(response)
+        return {
+            "status": "success",
+            "admin_initialized": True,
+            "admin_authenticated": True,
+        }
+    except ValueError as exc:
+        return {"status": "error", "message": str(exc)}
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+
+@app.post("/api/admin/login")
+async def admin_login(response: Response, data: dict = Body(default={})):
+    if not app_config.has_admin_password():
+        return {"status": "error", "message": "Admin password is not set."}
+    if not app_config.verify_admin_password(data.get("password", "")):
+        return {"status": "error", "message": "Invalid admin password."}
+    _create_admin_session(response)
+    return {
+        "status": "success",
+        "admin_initialized": True,
+        "admin_authenticated": True,
+    }
+
+
+@app.post("/api/admin/logout")
+async def admin_logout(request: Request, response: Response):
+    _clear_admin_session(request, response)
+    return {
+        "status": "success",
+        "admin_initialized": app_config.has_admin_password(),
+        "admin_authenticated": False,
+    }
+
+
 @app.post("/api/system/face-quality")
-async def update_face_quality(data: dict = Body(default={})):
+async def update_face_quality(request: Request, data: dict = Body(default={})):
+    auth_error = _require_admin(request)
+    if auth_error:
+        return auth_error
     try:
         payload = _validate_face_quality_payload(data)
         app_config.update_face_quality(**payload)
@@ -621,8 +953,31 @@ async def update_face_quality(data: dict = Body(default={})):
         return {"status": "error", "message": str(exc)}
 
 
+@app.post("/api/system/config")
+async def update_system_config(request: Request, data: dict = Body(default={})):
+    auth_error = _require_admin(request)
+    if auth_error:
+        return auth_error
+    try:
+        payload = _validate_runtime_config_payload(data)
+        app_config.update_runtime_config(payload)
+        return {
+            "status": "success",
+            "runtime_config": app_config.runtime_config(),
+            "cluster_config": app_config.cluster_defaults(),
+            "face_quality_config": app_config.face_quality_config(),
+        }
+    except ValueError as exc:
+        return {"status": "error", "message": str(exc)}
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+
 @app.post("/api/collect")
-async def collect_video(url: str, background_tasks: BackgroundTasks):
+async def collect_video(request: Request, url: str, background_tasks: BackgroundTasks):
+    auth_error = _require_admin(request)
+    if auth_error:
+        return auth_error
     if _maintenance_active():
         return _runtime_blocked_response()
 
@@ -660,9 +1015,13 @@ async def collect_video(url: str, background_tasks: BackgroundTasks):
 
 @app.post("/api/collect/source")
 async def collect_source(
+    request: Request,
     background_tasks: BackgroundTasks,
     data: dict = Body(default={}),
 ):
+    auth_error = _require_admin(request)
+    if auth_error:
+        return auth_error
     if _maintenance_active():
         return _runtime_blocked_response()
 
@@ -725,7 +1084,10 @@ async def get_sources():
 
 
 @app.post("/api/source/delete")
-async def delete_source(data: dict = Body(default={})):
+async def delete_source(request: Request, data: dict = Body(default={})):
+    auth_error = _require_admin(request)
+    if auth_error:
+        return auth_error
     source_id = data.get("source_id")
     delete_data = bool(data.get("delete_data"))
     if source_id is None:
@@ -768,7 +1130,10 @@ async def delete_source(data: dict = Body(default={})):
 
 
 @app.post("/api/system/reset")
-async def reset_system(data: dict = Body(default={})):
+async def reset_system(request: Request, data: dict = Body(default={})):
+    auth_error = _require_admin(request)
+    if auth_error:
+        return auth_error
     preserve_cookies = bool(data.get("preserve_cookies", True))
     try:
         with _maintenance_guard():
@@ -778,6 +1143,7 @@ async def reset_system(data: dict = Body(default={})):
                 removed_files_count += _remove_cookie_files()
             removed_files_count += db.reset_database_state()
             app_config.reset_to_defaults()
+            _clear_all_admin_sessions()
             _rebuild_runtime_state()
 
         return {
@@ -798,9 +1164,13 @@ async def reset_system(data: dict = Body(default={})):
 
 @app.post("/api/import/post")
 async def import_post(
+    request: Request,
     background_tasks: BackgroundTasks,
     data: dict = Body(default={}),
 ):
+    auth_error = _require_admin(request)
+    if auth_error:
+        return auth_error
     if _maintenance_active():
         return _runtime_blocked_response()
 
@@ -939,7 +1309,10 @@ async def search_image(metric: str = "cosine", file: UploadFile = File(...)):
 
 
 @app.post("/api/cluster/run")
-async def run_clustering(data: dict = Body(default={})):
+async def run_clustering(request: Request, data: dict = Body(default={})):
+    auth_error = _require_admin(request)
+    if auth_error:
+        return auth_error
     try:
         previous_config = app_config.cluster_defaults()
         algorithm = data.get("algorithm", previous_config["algorithm"])
@@ -970,7 +1343,10 @@ async def run_clustering(data: dict = Body(default={})):
 
 
 @app.post("/api/cluster/rollback")
-async def rollback_clustering():
+async def rollback_clustering(request: Request):
+    auth_error = _require_admin(request)
+    if auth_error:
+        return auth_error
     try:
         restored = db.restore_cluster_snapshot()
         if restored is None:
@@ -1047,7 +1423,10 @@ async def get_person_details(person_id: int):
 
 
 @app.post("/api/person/rename")
-async def rename_person(data: dict = Body(default={})):
+async def rename_person(request: Request, data: dict = Body(default={})):
+    auth_error = _require_admin(request)
+    if auth_error:
+        return auth_error
     person_id = data.get("person_id")
     new_name = data.get("name")
     if person_id is None or not new_name:
@@ -1058,7 +1437,10 @@ async def rename_person(data: dict = Body(default={})):
 
 
 @app.post("/api/face/reassign")
-async def reassign_face(data: dict = Body(default={})):
+async def reassign_face(request: Request, data: dict = Body(default={})):
+    auth_error = _require_admin(request)
+    if auth_error:
+        return auth_error
     face_id = data.get("face_id")
     target_person_id = data.get("target_person_id")
     if face_id is None or target_person_id is None:
@@ -1069,7 +1451,10 @@ async def reassign_face(data: dict = Body(default={})):
 
 
 @app.post("/api/person/merge")
-async def merge_person(data: dict = Body(default={})):
+async def merge_person(request: Request, data: dict = Body(default={})):
+    auth_error = _require_admin(request)
+    if auth_error:
+        return auth_error
     source_id = data.get("source_person_id")
     target_id = data.get("target_person_id")
     if source_id is None or target_id is None:

@@ -1,11 +1,13 @@
 import glob
 import hashlib
+import importlib.util
 import os
 from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
 import yt_dlp
+from yt_dlp.utils import DownloadError
 
 from core.config import app_config
 from core.weibo_adapter import WeiboUserCollector
@@ -18,6 +20,7 @@ class VideoCollector:
         self.weibo_adapter = weibo_adapter or WeiboUserCollector()
         self.save_dir.mkdir(parents=True, exist_ok=True)
         self.content_dir.mkdir(parents=True, exist_ok=True)
+        self.last_bilibili_impersonate_status = None
 
     def detect_platform(self, url):
         host = urlparse(url).netloc.lower()
@@ -94,13 +97,115 @@ class VideoCollector:
             ydl_opts["cookiefile"] = str(cookie_path)
         return ydl_opts
 
+    def _bilibili_headers(self):
+        return {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/135.0.0.0 Safari/537.36"
+            ),
+            "Referer": app_config.bilibili_referer,
+        }
+
+    def _supports_impersonate_target(self, target):
+        requested = str(target or "").strip()
+        if not requested:
+            return False, "No impersonate target configured."
+        if not importlib.util.find_spec("curl_cffi"):
+            return False, (
+                f'Impersonate target "{requested}" requested, but curl_cffi is not installed. '
+                "Downgrading to standard requests mode."
+            )
+        return True, f'Impersonate target "{requested}" is available.'
+
+    def _bilibili_ydl_opts(self, download=False):
+        opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "http_headers": self._bilibili_headers(),
+            "extractor_retries": 5,
+            "retry_sleep": "extractor:1:2",
+        }
+        if download:
+            opts.update(self._base_ydl_opts())
+            opts["http_headers"] = self._bilibili_headers()
+
+        requested_target = app_config.bilibili_impersonate
+        impersonate_enabled, impersonate_reason = self._supports_impersonate_target(
+            requested_target
+        )
+        self.last_bilibili_impersonate_status = {
+            "impersonate_requested": requested_target,
+            "impersonate_enabled": impersonate_enabled,
+            "impersonate_reason": impersonate_reason,
+        }
+        if impersonate_enabled:
+            opts["impersonate"] = requested_target
+
+        if app_config.bilibili_cookie_enabled and app_config.bilibili_cookie_path.exists():
+            opts["cookiefile"] = str(app_config.bilibili_cookie_path)
+        return opts
+
+    def _build_ydl_opts(self, platform, download=False, extra_opts=None):
+        platform = (platform or "").lower()
+        if platform == "bilibili":
+            opts = self._bilibili_ydl_opts(download=download)
+        elif download:
+            opts = self._base_ydl_opts()
+        else:
+            opts = {"quiet": True, "no_warnings": True}
+
+        if extra_opts:
+            opts.update(extra_opts)
+        return opts
+
+    def _format_bilibili_download_error(self, exc):
+        message = str(exc)
+        impersonate_status = self.last_bilibili_impersonate_status or {}
+        if "Impersonate target" in message and "not available" in message:
+            detail = impersonate_status.get("impersonate_reason") or (
+                "The runtime does not support the requested impersonate target."
+            )
+            return (
+                "Bilibili download attempted to use browser impersonation, but the current environment "
+                f"does not support it. {detail} Install the optional impersonation dependency for a more stable setup."
+            )
+        if "HTTP Error 412" not in message and "Precondition Failed" not in message:
+            return message
+        if not app_config.bilibili_cookie_path.exists():
+            return (
+                "Bilibili download failed with HTTP 412. "
+                "Missing Bilibili cookies file: storage/bilibili_cookies.txt"
+            )
+        if not impersonate_status.get("impersonate_enabled", True):
+            return (
+                "Bilibili download failed with HTTP 412 while running in downgraded non-impersonate mode. "
+                "The current bilibili_cookies.txt may be expired or blocked; refresh the cookie file. "
+                "For a more stable setup, install the optional dependency required for impersonation support."
+            )
+        return (
+            "Bilibili download failed with HTTP 412. "
+            "The current bilibili_cookies.txt may be expired or blocked; refresh the cookie file and retry later."
+        )
+
+    def _extract_info(self, url, platform, download=False, extra_opts=None):
+        opts = self._build_ydl_opts(platform, download=download, extra_opts=extra_opts)
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=download)
+                filename = ydl.prepare_filename(info) if download else ""
+            return info, filename
+        except DownloadError as exc:
+            if platform == "bilibili":
+                raise RuntimeError(self._format_bilibili_download_error(exc)) from exc
+            raise
+
     def download(self, url):
-        with yt_dlp.YoutubeDL(self._base_ydl_opts()) as ydl:
-            info = ydl.extract_info(url, download=True)
-            filename = self._resolve_media_path(ydl.prepare_filename(info), info)
+        platform = self.detect_platform(url)
+        info, prepared_filename = self._extract_info(url, platform, download=True)
+        filename = self._resolve_media_path(prepared_filename, info)
 
         subtitle_path = self._find_subtitle_file(filename)
-        platform = self.detect_platform(url)
         external_id = info.get("id") or self._build_content_id(url)
         return {
             "platform": platform,
@@ -140,8 +245,12 @@ class VideoCollector:
             "skip_download": True,
             "extract_flat": True,
         }
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(source_url, download=False)
+        info, _ = self._extract_info(
+            source_url,
+            platform,
+            download=False,
+            extra_opts=ydl_opts,
+        )
 
         raw_entries = info.get("entries") or []
         entries = []
@@ -177,8 +286,12 @@ class VideoCollector:
             return {}
 
         try:
-            with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True}) as ydl:
-                info = ydl.extract_info(url, download=False)
+            info, _ = self._extract_info(
+                url,
+                self.detect_platform(url),
+                download=False,
+                extra_opts={"quiet": True, "no_warnings": True},
+            )
         except Exception:
             return {}
 

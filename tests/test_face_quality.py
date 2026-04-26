@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from core.analyzer import AIProcessor
+from core.config import app_config
 
 
 def _make_face(bbox, kps=None, embedding=None):
@@ -29,8 +30,13 @@ def _make_face(bbox, kps=None, embedding=None):
 
 class FaceQualityTests(unittest.TestCase):
     def setUp(self):
+        self.original_face_quality = dict(app_config.data["face_quality"])
         self.processor = AIProcessor()
         self.processor.generate_description = lambda image: ""
+        app_config.data["face_quality"]["enabled"] = True
+
+    def tearDown(self):
+        app_config.data["face_quality"] = self.original_face_quality
 
     def test_process_image_keeps_all_valid_faces(self):
         image = np.random.default_rng(0).integers(0, 255, size=(180, 180, 3), dtype=np.uint8)
@@ -98,6 +104,56 @@ class FaceQualityTests(unittest.TestCase):
 
         self.assertTrue(candidates[0]["accepted"])
         self.assertIsNone(candidates[0]["reason"])
+
+    def test_process_image_releases_vlm_after_task(self):
+        image = np.random.default_rng(3).integers(0, 255, size=(180, 180, 3), dtype=np.uint8)
+        faces = [_make_face([20, 20, 100, 120], embedding=[1.0, 0.0, 0.0])]
+        self.processor._ensure_face_app = lambda: SimpleNamespace(get=lambda frame: faces)
+
+        def fake_generate_description(_image):
+            self.processor.vlm_processor = object()
+            self.processor.vlm_model = object()
+            self.processor.vlm_model_id = "microsoft/Florence-2-large-ft"
+            return "人物站在舞台中央"
+
+        self.processor.generate_description = fake_generate_description
+
+        results = self.processor.process_image(image)
+
+        self.assertEqual(len(results), 1)
+        self.assertIsNone(self.processor.vlm_model)
+        self.assertIsNone(self.processor.vlm_processor)
+        self.assertIsNone(self.processor.vlm_model_id)
+
+    def test_transcribe_video_releases_asr_after_transcription(self):
+        processor = AIProcessor()
+
+        class FakeSegment:
+            def __init__(self, start, end, text):
+                self.start = start
+                self.end = end
+                self.text = text
+
+        class FakeModel:
+            def transcribe(self, video_path, vad_filter=True, beam_size=3, **kwargs):
+                self.last_video_path = video_path
+                self.last_kwargs = kwargs
+                return [FakeSegment(0.0, 1.2, "测试语音")], None
+
+        fake_model = FakeModel()
+        processor.asr_model = fake_model
+        processor.asr_backend = "faster_whisper"
+        processor.asr_model_size = "medium"
+        processor._ensure_asr_model = lambda: fake_model
+
+        segments = processor.transcribe_video("demo.mp4")
+
+        self.assertEqual(segments[0]["text"], "测试语音")
+        self.assertIn("initial_prompt", fake_model.last_kwargs)
+        self.assertIn("hotwords", fake_model.last_kwargs)
+        self.assertIsNone(processor.asr_model)
+        self.assertIsNone(processor.asr_backend)
+        self.assertIsNone(processor.asr_model_size)
 
 
 if __name__ == "__main__":
