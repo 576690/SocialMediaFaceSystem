@@ -233,7 +233,7 @@ http://127.0.0.1:8000
 依赖集中在 `requirements.txt`，主要包括：
 
 - Web 服务：FastAPI、Uvicorn。
-- 媒体采集：yt-dlp、requests、weibo-spider。
+- 媒体采集：yt-dlp、requests、weibo-spider、Tweepy。
 - 图像与向量：OpenCV、InsightFace、ONNX Runtime、FAISS。
 - 深度学习与语义：PyTorch、Transformers、sentence-transformers、faster-whisper。
 - 聚类与评估：scikit-learn、hdbscan、numpy。
@@ -254,9 +254,79 @@ storage/bilibili_cookies.txt
 - 项目会优先尝试 B 站 impersonate 增强模式；若环境缺少相关依赖，会自动降级为普通请求模式。
 - `impersonate` 是增强项，不是使用 B 站 cookie 下载的前置必需项。
 
+### 来源适配器
+
+系统通过 `core/source_adapters.py` 统一账号或频道来源同步。内置适配器包括：
+
+- `weibo_user`：包装 `core/weibo_adapter.py`，同步微博用户图文。
+- `x_user`：包装 `core/x_adapter.py`，使用 Tweepy 和 X API v2 同步 X/Twitter 用户图片推文。
+- `yt_dlp`：包装 `yt-dlp`，同步 B 站、YouTube 和通用视频频道来源。
+
+适配器统一返回 `platform`、`title`、`source_url`、`entries`、`stats` 和 `cursor`。单条 `entry` 至少包含：
+
+- `content_type`：`video` 或 `post`。
+- `platform`、`external_id`、`title`、`url`。
+- 图文条目额外提供 `post_text`、`image_urls` 和可选 `metadata`。
+
+后台“来源适配器”区域只允许上传 JSON/YAML 配置，不允许上传 Python 代码。复杂网站需要技术人员先把 Python 适配器模块放到：
+
+```text
+storage/source_adapter_modules/
+```
+
+再上传配置文件启用。配置文件保存到：
+
+```text
+storage/source_adapters/
+```
+
+配置示例：
+
+```json
+{
+  "adapter_id": "custom_site",
+  "display_name": "Custom Site",
+  "platform": "custom_site",
+  "enabled": true,
+  "module": "custom_site_adapter:CustomSiteAdapter",
+  "source_types": ["user", "channel"],
+  "url_patterns": ["https://example.com/*"],
+  "default_limit": 10,
+  "settings": {}
+}
+```
+
+如果省略 `module`，该配置会作为 `yt-dlp` 风格来源使用，适合 `yt-dlp` 已支持的网站。若指定 `module`，模块名必须是 `storage/source_adapter_modules/` 下的本地 Python 文件，不从后台上传代码，避免把管理员配置入口变成远程代码执行入口。
+
+自定义 Python 适配器建议实现以下方法：
+
+- `match(source_url, platform=None, source_type=None)`：判断是否支持该来源。
+- `normalize_source(source_url, platform=None, source_type=None, metadata=None)`：归一化来源 URL。
+- `fetch_entries(source_record, limit)`：返回统一来源结果。
+- `get_request_headers(entry)`：图文图片下载时可返回平台请求头。
+
+### X/Twitter 同步
+
+X/Twitter 用户同步使用 Tweepy 调用 X API v2，需要将 Bearer Token 放到：
+
+```text
+storage/x_bearer_token.txt
+```
+
+支持的来源格式包括：
+
+```text
+OpenAI
+@OpenAI
+https://x.com/OpenAI
+https://twitter.com/OpenAI
+```
+
+第一版只同步含图片的推文，图片会进入现有图文人脸处理流水线；视频、GIF 和无图文本推文会被跳过。该功能受 X API 权限、额度、账号可见性和平台限流影响。X API v2 通过 fields 和 expansions 返回媒体等关联对象，Tweepy 提供 `get_user`、`get_users_tweets` 等封装。
+
 ## 项目亮点
 
-- 多来源采集：支持视频链接、频道/账号来源、微博图文和手动图文导入。
+- 多来源采集：支持视频链接、频道/账号来源、微博/X 图文和手动图文导入。
 - 多模态语义融合：把视觉描述、字幕、ASR 和正文融合为统一语义文本。
 - 双检索路径：既支持文本语义检索，也支持上传图片做人脸相似检索。
 - 可调质量过滤：通过人脸尺寸、清晰度和姿态阈值控制入库质量。

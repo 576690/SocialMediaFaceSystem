@@ -24,12 +24,18 @@ from core.clustering import (
 from core.collector import VideoCollector
 from core.config import app_config
 from core.database import DatabaseManager
+from core.source_adapters import (
+    SourceAdapterError,
+    SourceAdapterRegistry,
+    parse_adapter_config,
+)
 
 app = FastAPI(title="FaceRetriever 2026")
 
 db = DatabaseManager()
 ai_engine = AIProcessor()
 collector = VideoCollector()
+source_adapter_registry = SourceAdapterRegistry(collector)
 
 _task_state = {"active": 0, "maintenance": False}
 _task_state_lock = threading.Lock()
@@ -91,6 +97,8 @@ def _system_status_payload():
         "runtime_config": app_config.runtime_config(),
         "has_cluster_snapshot": db.has_cluster_snapshot(),
         "sources": db.list_collection_sources(),
+        "source_adapters": source_adapter_registry.list_adapters(),
+        "source_platform_options": source_adapter_registry.list_platform_options(),
     }
 
 
@@ -260,9 +268,10 @@ def _remove_cookie_files():
 
 
 def _rebuild_runtime_state():
-    global db, collector
+    global db, collector, source_adapter_registry
     db = DatabaseManager()
     collector = VideoCollector()
+    source_adapter_registry = SourceAdapterRegistry(collector)
 
 
 def _validate_face_quality_payload(data):
@@ -733,93 +742,85 @@ def process_post_task(post_info):
         db.update_content_paths(content_id, post_text=post_text)
 
 
-def sync_weibo_source_task(source_record, limit):
-    metadata = source_record.get("metadata", {})
-    keywords = _normalize_keywords(metadata.get("keywords", []))
-    fetched = collector.fetch_source_entries(
-        source_record["source_url"],
-        limit=limit,
-        platform="weibo",
-        source_type="weibo_user",
-        metadata={"keywords": keywords},
+def _sync_post_entry(source_record, adapter, entry):
+    existing = db.get_content_by_identity(entry["platform"], entry["external_id"])
+    if existing:
+        return "duplicate"
+
+    content_metadata = dict(entry.get("metadata") or {})
+    content_metadata["source_sync_url"] = source_record["source_url"]
+    content = db.upsert_content(
+        platform=entry["platform"],
+        external_id=entry["external_id"],
+        content_type="post",
+        title=entry.get("title", ""),
+        source_url=entry.get("url", ""),
+        post_text=entry.get("post_text", ""),
+        metadata=content_metadata,
+        collection_source_id=source_record["id"],
     )
-
-    imported_count = 0
-    duplicate_count = 0
-    failed_count = 0
-    for entry in fetched["entries"]:
-        existing = db.get_content_by_identity(entry["platform"], entry["external_id"])
-        if existing:
-            duplicate_count += 1
-            continue
-
-        content_metadata = dict(entry.get("metadata") or {})
-        content_metadata["source_sync_url"] = source_record["source_url"]
-        content = db.upsert_content(
-            platform=entry["platform"],
-            external_id=entry["external_id"],
-            content_type="post",
-            title=entry["title"],
-            source_url=entry["url"],
-            post_text=entry["post_text"],
-            metadata=content_metadata,
-            collection_source_id=source_record["id"],
+    try:
+        request_headers = entry.get("request_headers")
+        if request_headers is None:
+            request_headers = adapter.get_request_headers(entry)
+        images = collector.download_post_images(
+            entry["platform"],
+            entry["external_id"],
+            entry.get("image_urls") or [],
+            request_headers=request_headers,
         )
-        try:
-            images = collector.download_post_images(
-                entry["platform"],
-                entry["external_id"],
-                entry["image_urls"],
-                request_headers=collector.get_platform_request_headers(
-                    entry["platform"],
-                    referer=entry["url"],
-                ),
-            )
-        except Exception:
-            failed_count += 1
-            continue
+    except Exception:
+        return "failed"
 
-        if not images:
-            failed_count += 1
-            continue
+    if not images:
+        return "failed"
 
-        process_post_task(
-            {
-                "content_id": content["id"],
-                "platform": entry["platform"],
-                "external_id": entry["external_id"],
-                "post_text": entry["post_text"],
-                "url": entry["url"],
-                "images": images,
-            }
-        )
-        imported_count += 1
+    process_post_task(
+        {
+            "content_id": content["id"],
+            "platform": entry["platform"],
+            "external_id": entry["external_id"],
+            "post_text": entry.get("post_text", ""),
+            "url": entry.get("url", ""),
+            "images": images,
+        }
+    )
+    return "imported"
 
-    sync_stats = {
-        **fetched.get("stats", {}),
-        "imported_count": imported_count,
-        "duplicate_count": duplicate_count,
-        "failed_count": failed_count,
-    }
-    db.mark_source_synced(
-        source_record["id"],
-        title=fetched.get("title") or source_record.get("title", ""),
+
+def _sync_video_entry(source_record, entry):
+    entry_platform = entry.get("platform") or source_record.get("platform", "")
+    entry_external_id = entry.get("external_id", "")
+    if entry_platform and entry_external_id:
+        existing = db.get_content_by_identity(entry_platform, entry_external_id)
+        if existing and db.content_has_faces(existing["id"]):
+            return "duplicate"
+
+    info = collector.download(entry["url"])
+    content_platform = entry_platform or info["platform"]
+    content_external_id = entry_external_id or info["external_id"]
+    content = db.upsert_content(
+        platform=content_platform,
+        external_id=content_external_id,
+        content_type="video",
+        title=info.get("title") or entry.get("title", ""),
+        source_url=info.get("url") or entry.get("url", ""),
+        local_path=info["path"],
+        subtitle_path=info.get("subtitle_path", ""),
         metadata={
-            "keywords": keywords,
-            "limit": int(limit),
-            "user_id": fetched.get("user_id", ""),
-            "last_seen_post_id": fetched.get("cursor", {}).get("last_seen_post_id", ""),
-            "last_seen_publish_time": fetched.get("cursor", {}).get(
-                "last_seen_publish_time", ""
-            ),
-            "last_sync_stats": sync_stats,
+            **(entry.get("metadata") or {}),
+            "source_sync_url": source_record["source_url"],
         },
+        collection_source_id=source_record["id"],
     )
-    return {
-        "platform": "weibo",
-        "title": fetched.get("title") or source_record.get("title", ""),
-        "stats": sync_stats,
-    }
+    if db.content_has_faces(content["id"]):
+        return "duplicate"
+
+    info["content_id"] = content["id"]
+    info["platform"] = content_platform
+    info["external_id"] = content_external_id
+    process_video_task(info)
+    return "imported"
 
 
 def sync_source_task(source_record, limit):
@@ -830,55 +831,63 @@ def sync_source_task(source_record, limit):
                 "message": _maintenance_message(),
             }
 
-        if (
-            source_record.get("platform") == "weibo"
-            and source_record.get("source_type") == "weibo_user"
-        ):
-            return sync_weibo_source_task(source_record, limit)
-
-        fetched = collector.fetch_source_entries(source_record["source_url"], limit=limit)
+        metadata = source_record.get("metadata") or {}
+        adapter = source_adapter_registry.select_adapter(
+            source_record["source_url"],
+            platform=source_record.get("platform"),
+            source_type=source_record.get("source_type"),
+            adapter_id=metadata.get("adapter_id"),
+        )
+        fetched = adapter.fetch_entries(source_record, limit=limit)
         duplicate_count = 0
         imported_count = 0
-        for entry in fetched["entries"]:
-            existing = db.get_content_by_identity(entry["platform"], entry["external_id"])
-            if existing and db.content_has_faces(existing["id"]):
+        failed_count = 0
+        for entry in fetched.get("entries", []):
+            content_type = str(entry.get("content_type") or "video").lower()
+            if content_type == "post":
+                result = _sync_post_entry(source_record, adapter, entry)
+            else:
+                result = _sync_video_entry(source_record, entry)
+            if result == "duplicate":
                 duplicate_count += 1
-                continue
+            elif result == "failed":
+                failed_count += 1
+            elif result == "imported":
+                imported_count += 1
 
-            info = collector.download(entry["url"])
-            content = db.upsert_content(
-                platform=info["platform"],
-                external_id=info["external_id"],
-                content_type="video",
-                title=info["title"],
-                source_url=info["url"],
-                local_path=info["path"],
-                subtitle_path=info.get("subtitle_path", ""),
-                metadata={"source_sync_url": source_record["source_url"]},
-                collection_source_id=source_record["id"],
-            )
-            if db.content_has_faces(content["id"]):
-                duplicate_count += 1
-                continue
-
-            info["content_id"] = content["id"]
-            process_video_task(info)
-            imported_count += 1
+        base_stats = fetched.get("stats") or {}
+        sync_stats = {
+            "fetched_count": int(base_stats.get("fetched_count", len(fetched.get("entries", []))) or 0),
+            "matched_count": int(base_stats.get("matched_count", len(fetched.get("entries", []))) or 0),
+            "filtered_count": int(base_stats.get("filtered_count", 0) or 0),
+            "imported_count": imported_count,
+            "duplicate_count": duplicate_count,
+            "failed_count": failed_count,
+        }
+        cursor = fetched.get("cursor") or {}
+        mark_metadata = {
+            "adapter_id": adapter.adapter_id,
+            "limit": int(limit),
+            "last_sync_stats": sync_stats,
+        }
+        if metadata.get("keywords") is not None:
+            mark_metadata["keywords"] = _normalize_keywords(metadata.get("keywords", []))
+        if fetched.get("user_id"):
+            mark_metadata["user_id"] = fetched.get("user_id")
+        if cursor.get("last_seen_post_id"):
+            mark_metadata["last_seen_post_id"] = cursor.get("last_seen_post_id")
+        if cursor.get("last_seen_publish_time"):
+            mark_metadata["last_seen_publish_time"] = cursor.get("last_seen_publish_time")
 
         db.mark_source_synced(
             source_record["id"],
             title=fetched.get("title") or source_record.get("title", ""),
+            metadata=mark_metadata,
         )
         return {
             "platform": fetched.get("platform", source_record.get("platform", "")),
             "title": fetched.get("title") or source_record.get("title", ""),
-            "stats": {
-                "fetched_count": len(fetched["entries"]),
-                "matched_count": len(fetched["entries"]),
-                "imported_count": imported_count,
-                "duplicate_count": duplicate_count,
-                "filtered_count": 0,
-            },
+            "stats": sync_stats,
         }
 
 
@@ -973,6 +982,77 @@ async def update_system_config(request: Request, data: dict = Body(default={})):
         return {"status": "error", "message": str(exc)}
 
 
+@app.get("/api/source-adapters")
+async def list_source_adapters():
+    return {
+        "status": "success",
+        "adapters": source_adapter_registry.list_adapters(),
+        "platform_options": source_adapter_registry.list_platform_options(),
+    }
+
+
+@app.post("/api/source-adapters/config")
+async def upload_source_adapter_config(
+    request: Request,
+    file: UploadFile = File(...),
+):
+    auth_error = _require_admin(request)
+    if auth_error:
+        return auth_error
+    try:
+        config = parse_adapter_config(await file.read(), file.filename)
+        adapter = source_adapter_registry.save_config(config)
+        return {
+            "status": "success",
+            "adapter": adapter,
+            "adapters": source_adapter_registry.list_adapters(),
+            "platform_options": source_adapter_registry.list_platform_options(),
+        }
+    except (json.JSONDecodeError, SourceAdapterError, ValueError) as exc:
+        return {"status": "error", "message": str(exc)}
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+
+@app.post("/api/source-adapters/enable")
+async def enable_source_adapter(request: Request, data: dict = Body(default={})):
+    auth_error = _require_admin(request)
+    if auth_error:
+        return auth_error
+    try:
+        adapter_id = str(data.get("adapter_id") or "").strip()
+        adapter = source_adapter_registry.set_enabled(adapter_id, bool(data.get("enabled")))
+        return {
+            "status": "success",
+            "adapter": adapter,
+            "adapters": source_adapter_registry.list_adapters(),
+            "platform_options": source_adapter_registry.list_platform_options(),
+        }
+    except SourceAdapterError as exc:
+        return {"status": "error", "message": str(exc)}
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+
+@app.delete("/api/source-adapters/{adapter_id}")
+async def delete_source_adapter(request: Request, adapter_id: str):
+    auth_error = _require_admin(request)
+    if auth_error:
+        return auth_error
+    try:
+        adapter = source_adapter_registry.delete_config(adapter_id)
+        return {
+            "status": "success",
+            "adapter": adapter,
+            "adapters": source_adapter_registry.list_adapters(),
+            "platform_options": source_adapter_registry.list_platform_options(),
+        }
+    except SourceAdapterError as exc:
+        return {"status": "error", "message": str(exc)}
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+
 @app.post("/api/collect")
 async def collect_video(request: Request, url: str, background_tasks: BackgroundTasks):
     auth_error = _require_admin(request)
@@ -1027,24 +1107,37 @@ async def collect_source(
 
     try:
         source_url = data.get("source_url", "").strip()
-        platform = data.get("platform") or collector.detect_platform(source_url)
-        source_type = data.get("source_type") or (
-            "weibo_user" if platform == "weibo" else "channel"
-        )
-        limit_default = (
-            app_config.weibo_source_sync_limit
-            if platform == "weibo"
-            else app_config.source_sync_limit
-        )
-        limit = int(data.get("limit") or limit_default)
-        keywords = _normalize_keywords(data.get("keywords", []))
         if not source_url:
             return {"status": "error", "msg": "Missing source_url"}
-
-        source_url = collector.normalize_source_url(
+        platform = str(data.get("platform") or collector.detect_platform(source_url)).lower()
+        source_type = str(data.get("source_type") or (
+            "weibo_user" if platform == "weibo" else "channel"
+        )).lower()
+        if platform == "x" and source_type == "channel":
+            source_type = "x_user"
+        adapter_id = data.get("adapter_id") or data.get("source_adapter_id")
+        adapter = source_adapter_registry.select_adapter(
             source_url,
             platform=platform,
             source_type=source_type,
+            adapter_id=adapter_id,
+        )
+        limit_default = adapter.default_limit or app_config.source_sync_limit
+        limit = int(data.get("limit") or limit_default)
+        keywords = _normalize_keywords(data.get("keywords", []))
+        metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+        metadata = {
+            **metadata,
+            "adapter_id": adapter.adapter_id,
+            "keywords": keywords,
+            "limit": limit,
+        }
+
+        source_url = adapter.normalize_source(
+            source_url,
+            platform=platform,
+            source_type=source_type,
+            metadata=metadata,
         )
 
         source_record = db.register_collection_source(
@@ -1052,18 +1145,15 @@ async def collect_source(
             source_type=source_type,
             source_url=source_url,
             title=data.get("title", ""),
-            metadata={
-                "keywords": keywords,
-                "limit": limit,
-            },
+            metadata=metadata,
         )
-        if platform == "weibo" and source_type == "weibo_user":
+        if adapter.adapter_id == "weibo_user":
             sync_result = sync_source_task(source_record, limit)
             if sync_result.get("status") == "error":
                 return sync_result
             return {
                 "status": "success",
-                "msg": "Weibo user sync completed.",
+                "msg": "Source sync completed.",
                 "source": db.get_collection_source(source_record["id"]),
                 "sync_stats": sync_result.get("stats", {}),
             }

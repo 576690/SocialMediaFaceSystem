@@ -93,12 +93,33 @@ class AppConfig:
         self.content_dir = self.storage_dir / "content"
         self.asr_dir = self.storage_dir / "artifacts" / "asr"
         self.test_artifacts_dir = self.storage_dir / "test_artifacts"
+        self.source_adapter_config_dir = self.storage_dir / "source_adapters"
+        self.source_adapter_code_dir = self.storage_dir / "source_adapter_modules"
         self.system_config_path = self.storage_dir / "system_config.json"
         self.weibo_cookie_path = self.storage_dir / "weibo_cookies.txt"
         self.bilibili_cookie_path = self.storage_dir / "bilibili_cookies.txt"
+        self.x_bearer_token_path = self.storage_dir / "x_bearer_token.txt"
         self.load()
 
     def ensure_dirs(self):
+        expected_adapter_config_dir = self.storage_dir / "source_adapters"
+        expected_adapter_code_dir = self.storage_dir / "source_adapter_modules"
+        if (
+            not hasattr(self, "source_adapter_config_dir")
+            or Path(self.source_adapter_config_dir) != expected_adapter_config_dir
+        ):
+            self.source_adapter_config_dir = self.storage_dir / "source_adapters"
+        if (
+            not hasattr(self, "source_adapter_code_dir")
+            or Path(self.source_adapter_code_dir) != expected_adapter_code_dir
+        ):
+            self.source_adapter_code_dir = self.storage_dir / "source_adapter_modules"
+        expected_x_bearer_token_path = self.storage_dir / "x_bearer_token.txt"
+        if (
+            not hasattr(self, "x_bearer_token_path")
+            or Path(self.x_bearer_token_path) != expected_x_bearer_token_path
+        ):
+            self.x_bearer_token_path = self.storage_dir / "x_bearer_token.txt"
         for directory in (
             self.storage_dir,
             self.videos_dir,
@@ -106,6 +127,8 @@ class AppConfig:
             self.content_dir,
             self.asr_dir,
             self.test_artifacts_dir,
+            self.source_adapter_config_dir,
+            self.source_adapter_code_dir,
         ):
             directory.mkdir(parents=True, exist_ok=True)
 

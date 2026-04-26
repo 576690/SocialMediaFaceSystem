@@ -23,6 +23,7 @@ class VideoCollectorTests(unittest.TestCase):
             "system_config_path": app_config.system_config_path,
             "weibo_cookie_path": app_config.weibo_cookie_path,
             "bilibili_cookie_path": app_config.bilibili_cookie_path,
+            "x_bearer_token_path": app_config.x_bearer_token_path,
             "data": json.loads(json.dumps(app_config.data)),
         }
         self.temp_root = Path(tempfile.mkdtemp())
@@ -39,6 +40,7 @@ class VideoCollectorTests(unittest.TestCase):
         app_config.system_config_path = self.original_app_config["system_config_path"]
         app_config.weibo_cookie_path = self.original_app_config["weibo_cookie_path"]
         app_config.bilibili_cookie_path = self.original_app_config["bilibili_cookie_path"]
+        app_config.x_bearer_token_path = self.original_app_config["x_bearer_token_path"]
         app_config.data = self.original_app_config["data"]
         app_config.ensure_dirs()
         app_config.save()
@@ -54,9 +56,17 @@ class VideoCollectorTests(unittest.TestCase):
         app_config.system_config_path = temp_root / "system_config.json"
         app_config.weibo_cookie_path = temp_root / "weibo_cookies.txt"
         app_config.bilibili_cookie_path = temp_root / "bilibili_cookies.txt"
+        app_config.x_bearer_token_path = temp_root / "x_bearer_token.txt"
         app_config.data = json.loads(json.dumps(DEFAULT_CONFIG))
         app_config.ensure_dirs()
         app_config.save()
+
+    def test_detect_platform_supports_x_domains(self):
+        self.assertEqual(self.collector.detect_platform("https://x.com/OpenAI"), "x")
+        self.assertEqual(
+            self.collector.detect_platform("https://twitter.com/OpenAI"),
+            "x",
+        )
 
     def test_bilibili_opts_include_impersonate_headers_and_cookiefile(self):
         app_config.bilibili_cookie_path.write_text("SESSDATA=demo", encoding="utf-8")

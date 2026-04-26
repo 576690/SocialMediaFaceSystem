@@ -240,6 +240,20 @@
               <h2 class="ui text-xl font-bold">已登记采集源</h2>
               <p class="mt-2 text-sm text-slate-500">管理已登记的采集源，可仅删除登记，也可连同关联数据清理。</p>
               <div id="sourceList" class="mt-5 grid gap-4"></div>
+
+              <div class="mt-6 rounded-3xl bg-white/70 p-4">
+                <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <h3 class="ui font-bold">来源适配器</h3>
+                    <p class="mt-1 text-xs text-slate-500">上传 JSON/YAML 配置，启用服务器本地适配器模块。</p>
+                  </div>
+                  <button id="btnUploadSourceAdapter" onclick="uploadSourceAdapterConfig()"
+                    class="rounded-2xl bg-slate-950 px-4 py-2 text-sm text-white">上传配置</button>
+                </div>
+                <input id="sourceAdapterConfigFile" type="file" accept=".json,.yaml,.yml"
+                  class="mt-3 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                <div id="sourceAdapterList" class="mt-4 grid gap-3"></div>
+              </div>
             </div>
 
             <div class="glass rounded-3xl p-6">
@@ -553,6 +567,8 @@
       timelineItems: [],
       hasClusterSnapshot: false,
       dangerAction: null,
+      sourceAdapters: [],
+      sourcePlatformOptions: [],
       admin: { initialized: false, authenticated: false }
     };
 
@@ -746,6 +762,103 @@
       return raw.map(item => item.trim()).filter(Boolean);
     }
 
+    function refreshSourcePlatformOptions(options) {
+      const select = document.getElementById("sourcePlatform");
+      if (!select) return;
+      const selected = select.value;
+      const items = options && options.length ? options : [
+        { adapter_id: "yt_dlp", platform: "bilibili", source_type: "channel", label: "bilibili" },
+        { adapter_id: "yt_dlp", platform: "youtube", source_type: "channel", label: "youtube" },
+        { adapter_id: "weibo_user", platform: "weibo", source_type: "weibo_user", label: "weibo" }
+      ];
+      select.innerHTML = "";
+      items.forEach(item => {
+        const option = document.createElement("option");
+        option.value = `${item.adapter_id}:${item.platform}:${item.source_type}`;
+        option.textContent = item.label || item.platform || item.adapter_id;
+        option.dataset.adapterId = item.adapter_id || "";
+        option.dataset.platform = item.platform || "";
+        option.dataset.sourceType = item.source_type || "channel";
+        select.appendChild(option);
+      });
+      const existing = Array.from(select.options).find(option => option.value === selected);
+      if (existing) select.value = selected;
+    }
+
+    function renderSourceAdapters(adapters, options) {
+      state.sourceAdapters = adapters || [];
+      state.sourcePlatformOptions = options || [];
+      refreshSourcePlatformOptions(state.sourcePlatformOptions);
+      const c = document.getElementById("sourceAdapterList");
+      if (!c) return;
+      if (!state.sourceAdapters.length) {
+        c.innerHTML = `<div class="rounded-2xl bg-slate-50 p-3 text-xs text-slate-500">暂无来源适配器。</div>`;
+        return;
+      }
+      c.innerHTML = "";
+      state.sourceAdapters.forEach(adapter => {
+        const types = (adapter.source_types || []).join(", ");
+        const patterns = (adapter.url_patterns || []).join(", ");
+        const d = document.createElement("div");
+        d.className = "rounded-2xl bg-slate-50 p-3 text-xs text-slate-600";
+        d.innerHTML = `<div class="flex items-start justify-between gap-3"><div class="min-w-0"><p class="font-semibold text-slate-800">${safeText(adapter.display_name, adapter.adapter_id)}</p><p class="mt-1 break-all">${safeText(adapter.platform)} · ${safeText(types)}</p>${patterns ? `<p class="mt-1 break-all text-slate-400">${patterns}</p>` : ""}</div><span class="rounded-full px-2 py-1 ${adapter.enabled ? "bg-teal-100 text-teal-700" : "bg-slate-200 text-slate-500"}">${adapter.enabled ? "enabled" : "disabled"}</span></div>`;
+        if (!adapter.builtin) {
+          const actions = document.createElement("div");
+          actions.className = "mt-3 flex gap-2";
+          actions.innerHTML = `<button class="toggle-adapter rounded-xl bg-slate-900 px-3 py-2 text-white">${adapter.enabled ? "停用" : "启用"}</button><button class="delete-adapter rounded-xl bg-red-700 px-3 py-2 text-white">删除</button>`;
+          actions.querySelector(".toggle-adapter").addEventListener("click", () => setSourceAdapterEnabled(adapter.adapter_id, !adapter.enabled));
+          actions.querySelector(".delete-adapter").addEventListener("click", () => deleteSourceAdapter(adapter.adapter_id));
+          d.appendChild(actions);
+        }
+        c.appendChild(d);
+      });
+    }
+
+    async function loadSourceAdapters() {
+      const d = await fetchJson("/api/source-adapters");
+      if (d.status !== "success") return;
+      renderSourceAdapters(d.adapters || [], d.platform_options || []);
+    }
+
+    async function uploadSourceAdapterConfig() {
+      const input = document.getElementById("sourceAdapterConfigFile");
+      const file = input && input.files && input.files[0];
+      if (!file) return showToast("请选择适配器配置文件。", "error");
+      const form = new FormData();
+      form.append("file", file);
+      setLoading("btnUploadSourceAdapter", true, "上传中...");
+      try {
+        const d = await fetchJson("/api/source-adapters/config", {
+          method: "POST",
+          body: form
+        });
+        if (handleApiError(d, "上传适配器配置失败。")) return;
+        renderSourceAdapters(d.adapters || [], d.platform_options || []);
+        input.value = "";
+        showToast("适配器配置已保存。", "success");
+      } finally {
+        setLoading("btnUploadSourceAdapter", false);
+      }
+    }
+
+    async function setSourceAdapterEnabled(adapterId, enabled) {
+      const d = await fetchJson("/api/source-adapters/enable", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adapter_id: adapterId, enabled })
+      });
+      if (handleApiError(d, "更新适配器状态失败。")) return;
+      renderSourceAdapters(d.adapters || [], d.platform_options || []);
+      showToast("适配器状态已更新。", "success");
+    }
+
+    async function deleteSourceAdapter(adapterId) {
+      const d = await fetchJson(`/api/source-adapters/${encodeURIComponent(adapterId)}`, { method: "DELETE" });
+      if (handleApiError(d, "删除适配器失败。")) return;
+      renderSourceAdapters(d.adapters || [], d.platform_options || []);
+      showToast("适配器配置已删除。", "success");
+    }
+
     function populateRuntimeConfig(config) {
       if (!config) return;
       state.runtimeConfig = config;
@@ -781,6 +894,7 @@
       updateClusterSnapshotState(d.has_cluster_snapshot);
       renderClusterConfig(d.cluster_config);
       renderSources(d.sources || []);
+      renderSourceAdapters(d.source_adapters || [], d.source_platform_options || []);
       if (d.runtime_config) populateRuntimeConfig(d.runtime_config);
     }
 
@@ -860,15 +974,20 @@
       if (!sourceUrl) return showToast("请输入采集源链接。", "error");
       setLoading("btnSyncSource", true, "同步中...");
       try {
-        const platform = document.getElementById("sourcePlatform").value;
+        const sourceSelect = document.getElementById("sourcePlatform");
+        const selected = sourceSelect.selectedOptions[0];
+        const platform = (selected && selected.dataset.platform) || sourceSelect.value;
+        const sourceType = (selected && selected.dataset.sourceType) || (platform === "weibo" ? "weibo_user" : "channel");
+        const adapterId = (selected && selected.dataset.adapterId) || "";
         const keywords = document.getElementById("sourceKeywords").value.split(/\n|,|，/).map(v => v.trim()).filter(Boolean);
         const d = await fetchJson("/api/collect/source", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             source_url: sourceUrl,
+            adapter_id: adapterId,
             platform,
-            source_type: platform === "weibo" ? "weibo_user" : "channel",
+            source_type: sourceType,
             keywords,
             limit: Number(document.getElementById("sourceLimit").value || 10)
           })

@@ -21,3 +21,4 @@ faster-whisper
 insightface
 onnxruntime-gpu
 weibo-spider
+tweepy

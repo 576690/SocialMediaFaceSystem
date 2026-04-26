@@ -28,6 +28,8 @@ class VideoCollector:
             return "bilibili"
         if "weibo.com" in host or "weibo.cn" in host:
             return "weibo"
+        if host in {"x.com", "www.x.com", "twitter.com", "www.twitter.com"}:
+            return "x"
         if "youtube.com" in host or "youtu.be" in host:
             return "youtube"
         return "generic"

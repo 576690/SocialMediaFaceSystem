@@ -142,6 +142,60 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(people_payload["status"], "success")
         self.assertIn("people", people_payload)
 
+    def test_source_adapter_config_api_requires_admin_and_persists_config(self):
+        config_payload = {
+            "adapter_id": "custom_site",
+            "display_name": "Custom Site",
+            "platform": "custom_site",
+            "enabled": True,
+            "source_types": ["user", "channel"],
+            "url_patterns": ["https://example.com/*"],
+            "default_limit": 6,
+            "settings": {},
+        }
+        unauthenticated_payload = self.client.post(
+            "/api/source-adapters/config",
+            files={
+                "file": (
+                    "custom_site.json",
+                    json.dumps(config_payload),
+                    "application/json",
+                )
+            },
+        ).json()
+
+        self._setup_admin()
+        upload_payload = self.client.post(
+            "/api/source-adapters/config",
+            files={
+                "file": (
+                    "custom_site.json",
+                    json.dumps(config_payload),
+                    "application/json",
+                )
+            },
+        ).json()
+        config_file_exists_after_upload = (
+            app_config.source_adapter_config_dir / "custom_site.json"
+        ).exists()
+        listed_payload = self.client.get("/api/source-adapters").json()
+        disabled_payload = self.client.post(
+            "/api/source-adapters/enable",
+            json={"adapter_id": "custom_site", "enabled": False},
+        ).json()
+        deleted_payload = self.client.delete("/api/source-adapters/custom_site").json()
+
+        self.assertEqual(unauthenticated_payload["status"], "error")
+        self.assertTrue(unauthenticated_payload["admin_required"])
+        self.assertEqual(upload_payload["status"], "success")
+        self.assertEqual(upload_payload["adapter"]["adapter_id"], "custom_site")
+        self.assertTrue(config_file_exists_after_upload)
+        self.assertIn("custom_site", [item["adapter_id"] for item in listed_payload["adapters"]])
+        self.assertEqual(disabled_payload["status"], "success")
+        self.assertFalse(disabled_payload["adapter"]["enabled"])
+        self.assertEqual(deleted_payload["status"], "success")
+        self.assertFalse((app_config.source_adapter_config_dir / "custom_site.json").exists())
+
     def test_system_config_update_persists_and_rejects_invalid_payload(self):
         self._setup_admin()
 
