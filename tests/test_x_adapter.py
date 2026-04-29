@@ -193,6 +193,16 @@ class XUserCollectorTests(unittest.TestCase):
         self.assertEqual(entry["metadata"]["username"], "OpenAI")
         self.assertEqual(entry["metadata"]["like_count"], 5)
 
+    def test_fetch_user_posts_uses_platform_default_limit(self):
+        app_config.x_bearer_token_path.write_text("Bearer demo-token", encoding="utf-8")
+        app_config.data["collection"]["platforms"]["x"]["sync_limit"] = 1
+        collector = XUserCollector(client_cls=FakeTweepyClient)
+
+        result = collector.fetch_user_posts("@OpenAI")
+
+        self.assertEqual(len(result["entries"]), 1)
+        self.assertEqual(result["entries"][0]["external_id"], "100")
+
 
 if __name__ == "__main__":
     unittest.main()

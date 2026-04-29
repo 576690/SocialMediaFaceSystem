@@ -134,7 +134,7 @@ class WeiboUserSourceAdapter(BaseSourceAdapter):
 
     @property
     def default_limit(self):
-        return app_config.weibo_source_sync_limit
+        return app_config.platform_sync_limit("weibo")
 
     def normalize_source(self, source_url, platform=None, source_type=None, metadata=None):
         return self.collector.normalize_source_url(
@@ -196,7 +196,7 @@ class XUserSourceAdapter(BaseSourceAdapter):
 
     @property
     def default_limit(self):
-        return app_config.source_sync_limit
+        return app_config.platform_sync_limit("x")
 
     def normalize_source(self, source_url, platform=None, source_type=None, metadata=None):
         return self.x_adapter.normalize_user_source(source_url)["canonical_url"]

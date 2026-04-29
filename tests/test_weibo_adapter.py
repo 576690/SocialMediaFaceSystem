@@ -1,5 +1,6 @@
 import unittest
 
+from core.config import DEFAULT_CONFIG, app_config
 from core.weibo_adapter import WeiboSpiderRequestError, WeiboUserCollector
 
 
@@ -72,6 +73,30 @@ class RequestFailingIndexParser:
 
 
 class WeiboAdapterTests(unittest.TestCase):
+    def test_collector_reads_platform_timeout_and_retry_defaults(self):
+        original_data = app_config.data
+        try:
+            app_config.data = {
+                **DEFAULT_CONFIG,
+                "collection": {
+                    **DEFAULT_CONFIG["collection"],
+                    "platforms": {
+                        **DEFAULT_CONFIG["collection"]["platforms"],
+                        "weibo": {
+                            **DEFAULT_CONFIG["collection"]["platforms"]["weibo"],
+                            "timeout_seconds": 31,
+                            "retry_count": 6,
+                        },
+                    },
+                },
+            }
+            collector = WeiboUserCollector(cookie_file="dummy")
+
+            self.assertEqual(collector.timeout_seconds, 31)
+            self.assertEqual(collector.retries, 6)
+        finally:
+            app_config.data = original_data
+
     def test_normalize_keywords(self):
         collector = WeiboUserCollector(cookie_file="dummy")
         self.assertEqual(

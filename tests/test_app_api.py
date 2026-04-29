@@ -327,6 +327,105 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(saved_config["vision"]["caption_style"], "retrieval_keywords")
         self.assertEqual(saved_config["transcription"]["hotwords"], ["发布会", "路演", "采访"])
         self.assertEqual(saved_config["collection"]["weibo_cookie_enabled"], False)
+        self.assertIn("platforms", saved_config["collection"])
+        self.assertFalse(saved_config["collection"]["platforms"]["weibo"]["auth_enabled"])
+        self.assertEqual(saved_config["collection"]["platforms"]["weibo"]["sync_limit"], 9)
+        self.assertEqual(saved_config["collection"]["platforms"]["generic"]["sync_limit"], 15)
+
+    def test_platform_collection_config_update_persists_and_validates(self):
+        self._setup_admin()
+
+        payload = self.client.post(
+            "/api/system/config",
+            json={
+                "collection": {
+                    "platforms": {
+                        "weibo": {
+                            "enabled": True,
+                            "auth_enabled": False,
+                            "sync_limit": 7,
+                            "sync_interval_minutes": 30,
+                            "timeout_seconds": 25,
+                            "retry_count": 2,
+                        },
+                        "bilibili": {
+                            "enabled": True,
+                            "auth_enabled": False,
+                            "sync_limit": 11,
+                            "sync_interval_minutes": 60,
+                            "timeout_seconds": 35,
+                            "retry_count": 6,
+                            "impersonate": "chrome",
+                            "referer": "https://www.bilibili.com/",
+                        },
+                        "youtube": {
+                            "enabled": False,
+                            "auth_enabled": True,
+                            "sync_limit": 5,
+                            "sync_interval_minutes": 120,
+                            "timeout_seconds": 40,
+                            "retry_count": 3,
+                        },
+                        "x": {
+                            "enabled": True,
+                            "auth_enabled": True,
+                            "sync_limit": 4,
+                            "sync_interval_minutes": 15,
+                            "timeout_seconds": 45,
+                            "retry_count": 4,
+                        },
+                        "generic": {
+                            "enabled": True,
+                            "sync_limit": 13,
+                            "sync_interval_minutes": 0,
+                            "timeout_seconds": 20,
+                            "retry_count": 3,
+                        },
+                    }
+                }
+            },
+        ).json()
+        invalid_limit = self.client.post(
+            "/api/system/config",
+            json={"collection": {"platforms": {"weibo": {"sync_limit": 0}}}},
+        ).json()
+        invalid_interval = self.client.post(
+            "/api/system/config",
+            json={
+                "collection": {
+                    "platforms": {"weibo": {"sync_interval_minutes": -1}}
+                }
+            },
+        ).json()
+        invalid_timeout = self.client.post(
+            "/api/system/config",
+            json={"collection": {"platforms": {"x": {"timeout_seconds": 1}}}},
+        ).json()
+        invalid_retry = self.client.post(
+            "/api/system/config",
+            json={"collection": {"platforms": {"youtube": {"retry_count": 99}}}},
+        ).json()
+        status_payload = self.client.get("/api/system/status").json()
+        saved_config = json.loads(app_config.system_config_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(payload["status"], "success")
+        self.assertEqual(
+            payload["runtime_config"]["collection"]["platforms"]["weibo"]["sync_limit"],
+            7,
+        )
+        self.assertEqual(
+            payload["runtime_config"]["collection"]["platforms"]["bilibili"]["retry_count"],
+            6,
+        )
+        self.assertFalse(
+            status_payload["runtime_config"]["collection"]["platforms"]["youtube"]["enabled"]
+        )
+        self.assertEqual(saved_config["collection"]["platforms"]["x"]["sync_limit"], 4)
+        self.assertEqual(saved_config["collection"]["source_sync_limit"], 13)
+        self.assertEqual(invalid_limit["status"], "error")
+        self.assertEqual(invalid_interval["status"], "error")
+        self.assertEqual(invalid_timeout["status"], "error")
+        self.assertEqual(invalid_retry["status"], "error")
 
     def test_system_reset_preserves_videos_directory_contents(self):
         self._setup_admin()

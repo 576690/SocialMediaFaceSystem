@@ -7,6 +7,55 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 
+PLATFORM_CONFIG_DEFAULTS = {
+    "weibo": {
+        "enabled": True,
+        "auth_enabled": True,
+        "sync_limit": 10,
+        "sync_interval_minutes": 0,
+        "timeout_seconds": 15,
+        "retry_count": 3,
+    },
+    "bilibili": {
+        "enabled": True,
+        "auth_enabled": True,
+        "sync_limit": 10,
+        "sync_interval_minutes": 0,
+        "timeout_seconds": 20,
+        "retry_count": 5,
+        "impersonate": "chrome",
+        "referer": "https://www.bilibili.com/",
+    },
+    "youtube": {
+        "enabled": True,
+        "auth_enabled": True,
+        "sync_limit": 10,
+        "sync_interval_minutes": 0,
+        "timeout_seconds": 20,
+        "retry_count": 3,
+    },
+    "x": {
+        "enabled": True,
+        "auth_enabled": True,
+        "sync_limit": 10,
+        "sync_interval_minutes": 0,
+        "timeout_seconds": 20,
+        "retry_count": 3,
+    },
+    "generic": {
+        "enabled": True,
+        "sync_limit": 10,
+        "sync_interval_minutes": 0,
+        "timeout_seconds": 20,
+        "retry_count": 3,
+    },
+}
+
+
+def _default_platforms():
+    return deepcopy(PLATFORM_CONFIG_DEFAULTS)
+
+
 DEFAULT_CONFIG = {
     "processing": {
         "frame_sample_seconds": 2.0,
@@ -33,6 +82,7 @@ DEFAULT_CONFIG = {
         "bilibili_cookie_enabled": True,
         "bilibili_impersonate": "chrome",
         "bilibili_referer": "https://www.bilibili.com/",
+        "platforms": _default_platforms(),
     },
     "transcription": {
         "enabled": True,
@@ -136,6 +186,7 @@ class AppConfig:
 
     def load(self):
         self.ensure_dirs()
+        loaded = {}
         if self.system_config_path.exists():
             with open(self.system_config_path, "r", encoding="utf-8") as f:
                 loaded = json.load(f)
@@ -143,6 +194,7 @@ class AppConfig:
         else:
             self.data = deepcopy(DEFAULT_CONFIG)
             self.save()
+        self._normalize_collection_config(loaded.get("collection") if isinstance(loaded, dict) else None)
 
     def save(self):
         self.ensure_dirs()
@@ -151,6 +203,7 @@ class AppConfig:
 
     def reset_to_defaults(self):
         self.data = deepcopy(DEFAULT_CONFIG)
+        self._normalize_collection_config({"platforms": self.data["collection"]["platforms"]})
         self.save()
 
     def has_admin_password(self):
@@ -274,7 +327,7 @@ class AppConfig:
 
     @property
     def source_sync_limit(self):
-        return int(self.data["collection"]["source_sync_limit"])
+        return self.platform_sync_limit("generic")
 
     @property
     def subtitle_languages(self):
@@ -286,31 +339,141 @@ class AppConfig:
 
     @property
     def weibo_cookie_enabled(self):
-        return bool(self.data["collection"]["weibo_cookie_enabled"])
+        return self.platform_auth_enabled("weibo")
 
     @property
     def weibo_source_sync_limit(self):
-        return int(self.data["collection"]["weibo_source_sync_limit"])
+        return self.platform_sync_limit("weibo")
 
     @property
     def weibo_timeout_seconds(self):
-        return int(self.data["collection"]["weibo_timeout_seconds"])
+        return self.platform_timeout_seconds("weibo")
 
     @property
     def weibo_retry_count(self):
-        return int(self.data["collection"]["weibo_retry_count"])
+        return self.platform_retry_count("weibo")
 
     @property
     def bilibili_cookie_enabled(self):
-        return bool(self.data["collection"]["bilibili_cookie_enabled"])
+        return self.platform_auth_enabled("bilibili")
 
     @property
     def bilibili_impersonate(self):
-        return self.data["collection"]["bilibili_impersonate"]
+        return self.platform_config("bilibili").get("impersonate", "chrome")
 
     @property
     def bilibili_referer(self):
-        return self.data["collection"]["bilibili_referer"]
+        return self.platform_config("bilibili").get(
+            "referer",
+            "https://www.bilibili.com/",
+        )
+
+    def _normalize_collection_config(self, loaded_collection=None):
+        collection = self.data.setdefault("collection", {})
+        if not isinstance(collection, dict):
+            self.data["collection"] = deepcopy(DEFAULT_CONFIG["collection"])
+            collection = self.data["collection"]
+
+        loaded_collection = loaded_collection if isinstance(loaded_collection, dict) else {}
+        loaded_platforms = loaded_collection.get("platforms")
+        has_loaded_platforms = isinstance(loaded_platforms, dict)
+
+        platforms = _merge_dicts(
+            PLATFORM_CONFIG_DEFAULTS,
+            collection.get("platforms") if isinstance(collection.get("platforms"), dict) else {},
+        )
+
+        if not has_loaded_platforms:
+            default_collection = DEFAULT_CONFIG["collection"]
+            source_sync_limit = collection.get(
+                "source_sync_limit",
+                default_collection["source_sync_limit"],
+            )
+            for platform in ("bilibili", "youtube", "x", "generic"):
+                platforms[platform]["sync_limit"] = source_sync_limit
+
+            platforms["weibo"]["auth_enabled"] = collection.get(
+                "weibo_cookie_enabled",
+                default_collection["weibo_cookie_enabled"],
+            )
+            platforms["weibo"]["sync_limit"] = collection.get(
+                "weibo_source_sync_limit",
+                default_collection["weibo_source_sync_limit"],
+            )
+            platforms["weibo"]["timeout_seconds"] = collection.get(
+                "weibo_timeout_seconds",
+                default_collection["weibo_timeout_seconds"],
+            )
+            platforms["weibo"]["retry_count"] = collection.get(
+                "weibo_retry_count",
+                default_collection["weibo_retry_count"],
+            )
+            platforms["bilibili"]["auth_enabled"] = collection.get(
+                "bilibili_cookie_enabled",
+                default_collection["bilibili_cookie_enabled"],
+            )
+            platforms["bilibili"]["impersonate"] = collection.get(
+                "bilibili_impersonate",
+                default_collection["bilibili_impersonate"],
+            )
+            platforms["bilibili"]["referer"] = collection.get(
+                "bilibili_referer",
+                default_collection["bilibili_referer"],
+            )
+
+        collection["platforms"] = platforms
+        self._sync_legacy_collection_fields()
+
+    def _sync_legacy_collection_fields(self):
+        collection = self.data.setdefault("collection", {})
+        platforms = collection.get("platforms") or {}
+        generic = platforms.get("generic", PLATFORM_CONFIG_DEFAULTS["generic"])
+        weibo = platforms.get("weibo", PLATFORM_CONFIG_DEFAULTS["weibo"])
+        bilibili = platforms.get("bilibili", PLATFORM_CONFIG_DEFAULTS["bilibili"])
+        collection["source_sync_limit"] = int(generic.get("sync_limit", 10))
+        collection["weibo_cookie_enabled"] = bool(weibo.get("auth_enabled", True))
+        collection["weibo_source_sync_limit"] = int(weibo.get("sync_limit", 10))
+        collection["weibo_timeout_seconds"] = int(weibo.get("timeout_seconds", 15))
+        collection["weibo_retry_count"] = int(weibo.get("retry_count", 3))
+        collection["bilibili_cookie_enabled"] = bool(
+            bilibili.get("auth_enabled", True)
+        )
+        collection["bilibili_impersonate"] = str(
+            bilibili.get("impersonate", "chrome") or "chrome"
+        )
+        collection["bilibili_referer"] = str(
+            bilibili.get("referer", "https://www.bilibili.com/")
+            or "https://www.bilibili.com/"
+        )
+
+    def collection_platforms_config(self):
+        self._normalize_collection_config(
+            {"platforms": self.data.get("collection", {}).get("platforms", {})}
+        )
+        return deepcopy(self.data["collection"]["platforms"])
+
+    def platform_config(self, platform):
+        platform = str(platform or "generic").lower()
+        platforms = self.collection_platforms_config()
+        return platforms.get(platform) or platforms["generic"]
+
+    def platform_enabled(self, platform):
+        return bool(self.platform_config(platform).get("enabled", True))
+
+    def platform_auth_enabled(self, platform):
+        return bool(self.platform_config(platform).get("auth_enabled", False))
+
+    def platform_sync_limit(self, platform):
+        return int(self.platform_config(platform).get("sync_limit", 10))
+
+    def platform_sync_interval_minutes(self, platform):
+        return int(self.platform_config(platform).get("sync_interval_minutes", 0))
+
+    def platform_timeout_seconds(self, platform):
+        return int(self.platform_config(platform).get("timeout_seconds", 20))
+
+    def platform_retry_count(self, platform):
+        return int(self.platform_config(platform).get("retry_count", 3))
 
     @property
     def transcription_enabled(self):
@@ -392,6 +555,7 @@ class AppConfig:
                 "bilibili_cookie_enabled": self.bilibili_cookie_enabled,
                 "bilibili_impersonate": self.bilibili_impersonate,
                 "bilibili_referer": self.bilibili_referer,
+                "platforms": self.collection_platforms_config(),
             },
             "transcription": {
                 "enabled": self.transcription_enabled,
@@ -424,6 +588,9 @@ class AppConfig:
             for key, value in values.items():
                 if key in target:
                     target[key] = value
+        self._normalize_collection_config(
+            {"platforms": self.data.get("collection", {}).get("platforms", {})}
+        )
         self.save()
 
     def update_face_quality(

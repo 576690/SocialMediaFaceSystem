@@ -56,11 +56,14 @@ def cluster_embeddings(embeddings, algorithm="dbscan", metric="cosine", eps=0.4,
     else:
         if hdbscan is None:
             raise RuntimeError("HDBSCAN is unavailable. Install the hdbscan package.")
+        if metric == "cosine":
+            matrix = matrix.astype(np.float64, copy=False)
         model = hdbscan.HDBSCAN(
             min_cluster_size=max(int(min_samples), 2),
             min_samples=max(int(min_samples), 2),
             metric=metric,
             cluster_selection_epsilon=float(eps),
+            algorithm="generic" if metric == "cosine" else "best",
         )
 
     return np.asarray(model.fit_predict(matrix))
@@ -196,7 +199,7 @@ def evaluate_embedding_clusters(
     return results
 
 
-def evaluate_embedding_retrieval(embeddings, person_ids, metrics=None, top_k=5):
+def _evaluate_embedding_retrieval_numpy(embeddings, person_ids, metrics=None, top_k=5, backend_name="numpy"):
     embeddings = np.asarray(embeddings, dtype=np.float32)
     if len(embeddings) < 3:
         return []
@@ -247,6 +250,7 @@ def evaluate_embedding_retrieval(embeddings, person_ids, metrics=None, top_k=5):
         metrics_summary.append(
             {
                 "metric": metric,
+                "backend": backend_name,
                 "top1": round(top1_hits / valid_queries, 4) if valid_queries else None,
                 "top5": round(topk_hits / valid_queries, 4) if valid_queries else None,
                 "topk": round(topk_hits / valid_queries, 4) if valid_queries else None,
@@ -255,6 +259,144 @@ def evaluate_embedding_retrieval(embeddings, person_ids, metrics=None, top_k=5):
         )
 
     return metrics_summary
+
+
+def _evaluate_embedding_retrieval_torch_cuda(embeddings, person_ids, metrics=None, top_k=5, chunk_size=1024):
+    import torch
+
+    if not torch.cuda.is_available():
+        raise RuntimeError("Torch CUDA is unavailable.")
+
+    embeddings = np.asarray(embeddings, dtype=np.float32)
+    if len(embeddings) < 3:
+        return []
+
+    metrics = metrics or list(SUPPORTED_METRICS)
+    top_k = max(int(top_k), 1)
+    chunk_size = max(int(chunk_size), 1)
+    device = torch.device("cuda")
+    person_ids_np = np.asarray([int(person_id) for person_id in person_ids], dtype=np.int64)
+    label_counts = Counter(person_ids_np.tolist())
+    valid_query_mask = np.asarray(
+        [label_counts[int(person_id)] >= 2 for person_id in person_ids_np],
+        dtype=bool,
+    )
+    valid_queries = int(np.sum(valid_query_mask))
+
+    if valid_queries == 0:
+        return [
+            {
+                "metric": metric,
+                "backend": "torch-cuda",
+                "top1": None,
+                "top5": None,
+                "topk": None,
+                "queries": 0,
+            }
+            for metric in metrics
+        ]
+
+    matrix = torch.as_tensor(embeddings, dtype=torch.float32, device=device)
+    normalized_matrix = matrix / torch.clamp(
+        torch.linalg.norm(matrix, dim=1, keepdim=True),
+        min=1e-12,
+    )
+    labels = torch.as_tensor(person_ids_np, dtype=torch.long, device=device)
+    valid_mask = torch.as_tensor(valid_query_mask, dtype=torch.bool, device=device)
+    row_indices = torch.arange(matrix.shape[0], device=device)
+    all_norms = torch.sum(normalized_matrix * normalized_matrix, dim=1)
+    metrics_summary = []
+
+    for metric in metrics:
+        top1_hits = 0
+        topk_hits = 0
+
+        for start in range(0, normalized_matrix.shape[0], chunk_size):
+            end = min(start + chunk_size, normalized_matrix.shape[0])
+            chunk_valid_mask = valid_mask[start:end]
+            if not bool(torch.any(chunk_valid_mask).item()):
+                continue
+
+            query = normalized_matrix[start:end]
+            if metric == "euclidean":
+                query_norms = torch.sum(query * query, dim=1, keepdim=True)
+                scores = query_norms + all_norms.unsqueeze(0) - 2.0 * torch.matmul(
+                    query,
+                    normalized_matrix.T,
+                )
+                scores = torch.clamp(scores, min=0.0)
+                scores[row_indices[start:end] - start, row_indices[start:end]] = float("inf")
+                top_indices = torch.topk(
+                    scores,
+                    k=min(top_k, max(scores.shape[1] - 1, 1)),
+                    dim=1,
+                    largest=False,
+                ).indices
+            else:
+                scores = torch.matmul(query, normalized_matrix.T)
+                scores[row_indices[start:end] - start, row_indices[start:end]] = -float("inf")
+                top_indices = torch.topk(
+                    scores,
+                    k=min(top_k, max(scores.shape[1] - 1, 1)),
+                    dim=1,
+                    largest=True,
+                ).indices
+
+            query_labels = labels[start:end]
+            hit_matrix = labels[top_indices] == query_labels.unsqueeze(1)
+            top1_hits += int(torch.sum(hit_matrix[:, 0] & chunk_valid_mask).item())
+            topk_hits += int(torch.sum(torch.any(hit_matrix, dim=1) & chunk_valid_mask).item())
+
+        metrics_summary.append(
+            {
+                "metric": metric,
+                "backend": "torch-cuda",
+                "top1": round(top1_hits / valid_queries, 4),
+                "top5": round(topk_hits / valid_queries, 4),
+                "topk": round(topk_hits / valid_queries, 4),
+                "queries": valid_queries,
+            }
+        )
+
+    return metrics_summary
+
+
+def evaluate_embedding_retrieval(embeddings, person_ids, metrics=None, top_k=5, backend="numpy"):
+    backend = (backend or "numpy").lower()
+    if backend not in ("numpy", "torch-cuda", "auto"):
+        raise ValueError(f"Unsupported retrieval backend: {backend}")
+
+    if backend in ("torch-cuda", "auto"):
+        try:
+            return _evaluate_embedding_retrieval_torch_cuda(
+                embeddings,
+                person_ids,
+                metrics=metrics,
+                top_k=top_k,
+            )
+        except Exception as exc:
+            if backend == "torch-cuda":
+                fallback_backend = "numpy"
+            else:
+                fallback_backend = "numpy"
+            rows = _evaluate_embedding_retrieval_numpy(
+                embeddings,
+                person_ids,
+                metrics=metrics,
+                top_k=top_k,
+                backend_name=fallback_backend,
+            )
+            for row in rows:
+                row["fallback_reason"] = str(exc)
+            return rows
+
+    return _evaluate_embedding_retrieval_numpy(
+        embeddings,
+        person_ids,
+        metrics=metrics,
+        top_k=top_k,
+        backend_name="numpy",
+    )
 
 
 def inherit_person_names(records, labels, label_to_person_id, old_name_map):

@@ -1,9 +1,13 @@
 import csv
+import hashlib
 import inspect
 import json
+import shutil
+import tarfile
 import time
 from itertools import product
 from pathlib import Path
+from urllib.request import urlretrieve
 
 import numpy as np
 
@@ -11,6 +15,12 @@ from core.clustering import evaluate_embedding_clusters, evaluate_embedding_retr
 
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp"}
+LFW_DEEPFUNNELED_DIRNAME = "lfw-deepfunneled"
+LFW_DEEPFUNNELED_FILENAME = "lfw-deepfunneled.tgz"
+LFW_DEEPFUNNELED_MD5 = "68331da3eb755a505a502b5aacb3c201"
+LFW_DEEPFUNNELED_URL = f"http://vis-www.cs.umass.edu/lfw/{LFW_DEEPFUNNELED_FILENAME}"
+LFW_EXPECTED_IDENTITIES = 5749
+LFW_EXPECTED_IMAGES = 13233
 DEFAULT_FACE_QUALITY_GRID = {
     "min_face_size": [40, 56, 72],
     "min_face_ratio": [0.02, 0.035, 0.05],
@@ -18,6 +28,32 @@ DEFAULT_FACE_QUALITY_GRID = {
     "max_pose_deviation": [0.25, 0.35, 0.45],
     "blur_eval_size": [96],
 }
+CONTROLLED_FACE_QUALITY_GRID = [
+    {
+        "enabled": True,
+        "min_face_size": 56,
+        "min_face_ratio": 0.035,
+        "min_laplacian_var": 80.0,
+        "max_pose_deviation": 0.35,
+        "blur_eval_size": 96,
+    },
+    {
+        "enabled": True,
+        "min_face_size": 40,
+        "min_face_ratio": 0.02,
+        "min_laplacian_var": 50.0,
+        "max_pose_deviation": 0.45,
+        "blur_eval_size": 96,
+    },
+    {
+        "enabled": True,
+        "min_face_size": 72,
+        "min_face_ratio": 0.05,
+        "min_laplacian_var": 120.0,
+        "max_pose_deviation": 0.25,
+        "blur_eval_size": 96,
+    },
+]
 
 
 def discover_identity_dataset(dataset_path):
@@ -40,6 +76,142 @@ def discover_identity_dataset(dataset_path):
             }
         )
     return identities
+
+
+def count_identity_dataset(dataset_path):
+    identities = discover_identity_dataset(dataset_path)
+    return {
+        "identities": len(identities),
+        "images": sum(len(identity["image_paths"]) for identity in identities),
+    }
+
+
+def _file_md5(path, chunk_size=1024 * 1024):
+    digest = hashlib.md5()
+    with open(path, "rb") as file:
+        for chunk in iter(lambda: file.read(chunk_size), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _safe_extract_tar(tar, destination):
+    destination = Path(destination).resolve()
+    for member in tar.getmembers():
+        target = (destination / member.name).resolve()
+        try:
+            target.relative_to(destination)
+        except ValueError:
+            raise RuntimeError(f"Unsafe archive member path: {member.name}")
+    tar.extractall(destination)
+
+
+def ensure_lfw_deepfunneled_dataset(dataset_path, download_if_missing=True):
+    dataset_path = Path(dataset_path).expanduser().resolve()
+    status = {
+        "dataset_path": str(dataset_path),
+        "expected_identities": LFW_EXPECTED_IDENTITIES,
+        "expected_images": LFW_EXPECTED_IMAGES,
+        "downloaded": False,
+        "source": "local",
+        "complete": False,
+    }
+
+    if dataset_path.exists():
+        counts = count_identity_dataset(dataset_path)
+        status.update(counts)
+        if counts["identities"] == LFW_EXPECTED_IDENTITIES and counts["images"] == LFW_EXPECTED_IMAGES:
+            status["complete"] = True
+            return status
+
+    if not download_if_missing:
+        return status
+
+    dataset_path.parent.mkdir(parents=True, exist_ok=True)
+    archive_path = dataset_path.parent / LFW_DEEPFUNNELED_FILENAME
+    if not archive_path.exists() or _file_md5(archive_path) != LFW_DEEPFUNNELED_MD5:
+        urlretrieve(LFW_DEEPFUNNELED_URL, archive_path)
+        actual_md5 = _file_md5(archive_path)
+        if actual_md5 != LFW_DEEPFUNNELED_MD5:
+            archive_path.unlink(missing_ok=True)
+            raise RuntimeError(
+                f"LFW archive checksum mismatch: expected {LFW_DEEPFUNNELED_MD5}, got {actual_md5}"
+            )
+
+    extract_parent = dataset_path.parent
+    extracted_path = extract_parent / LFW_DEEPFUNNELED_DIRNAME
+    if extracted_path.exists() and extracted_path.resolve() != dataset_path:
+        shutil.rmtree(extracted_path)
+    with tarfile.open(archive_path, "r:gz") as tar:
+        _safe_extract_tar(tar, extract_parent)
+    if extracted_path.resolve() != dataset_path:
+        if dataset_path.exists():
+            shutil.rmtree(dataset_path)
+        extracted_path.replace(dataset_path)
+
+    counts = count_identity_dataset(dataset_path)
+    status.update(counts)
+    status["downloaded"] = True
+    status["source"] = LFW_DEEPFUNNELED_URL
+    status["complete"] = counts["identities"] == LFW_EXPECTED_IDENTITIES and counts["images"] == LFW_EXPECTED_IMAGES
+    if not status["complete"]:
+        raise RuntimeError(
+            "Downloaded LFW deepfunneled dataset is incomplete: "
+            f"{counts['identities']} identities, {counts['images']} images."
+        )
+    return status
+
+
+def get_runtime_device_report():
+    report = {
+        "torch_available": False,
+        "torch_cuda_available": False,
+        "torch_version": "",
+        "torch_cuda_version": "",
+        "cuda_device_count": 0,
+        "cuda_device_name": "",
+        "onnxruntime_available": False,
+        "onnxruntime_version": "",
+        "onnxruntime_providers": [],
+        "faiss_available": False,
+        "faiss_version": "",
+        "faiss_gpu_available": False,
+    }
+    try:
+        import torch
+
+        report["torch_available"] = True
+        report["torch_version"] = str(torch.__version__)
+        report["torch_cuda_available"] = bool(torch.cuda.is_available())
+        report["torch_cuda_version"] = str(torch.version.cuda or "")
+        report["cuda_device_count"] = int(torch.cuda.device_count())
+        if torch.cuda.is_available() and torch.cuda.device_count():
+            report["cuda_device_name"] = str(torch.cuda.get_device_name(0))
+    except Exception as exc:
+        report["torch_error"] = str(exc)
+
+    try:
+        import onnxruntime as ort
+
+        report["onnxruntime_available"] = True
+        report["onnxruntime_version"] = str(ort.__version__)
+        report["onnxruntime_providers"] = list(ort.get_available_providers())
+    except Exception as exc:
+        report["onnxruntime_error"] = str(exc)
+
+    try:
+        import faiss
+
+        report["faiss_available"] = True
+        report["faiss_version"] = str(getattr(faiss, "__version__", "unknown"))
+        report["faiss_gpu_available"] = bool(hasattr(faiss, "StandardGpuResources"))
+    except Exception as exc:
+        report["faiss_error"] = str(exc)
+
+    return report
+
+
+def build_controlled_face_quality_grid():
+    return [normalize_face_quality_config(config) for config in CONTROLLED_FACE_QUALITY_GRID]
 
 
 def normalize_face_quality_config(face_quality_config=None):
@@ -331,6 +503,7 @@ def evaluate_face_quality_grid(
     cache_dir=None,
     refresh_cache=False,
     embedding_extractor=None,
+    retrieval_backend="numpy",
 ):
     quality_grid = quality_grid or build_face_quality_grid()
     rows = []
@@ -364,6 +537,7 @@ def evaluate_face_quality_grid(
                 eps_grid=eps_grid,
                 min_samples_grid=min_samples_grid,
                 top_k=top_k,
+                retrieval_backend=retrieval_backend,
             )
             cluster_row = _best_cluster_metrics(benchmark_payload["clustering_results"])
             retrieval_row = _best_retrieval_metrics(benchmark_payload["retrieval_results"])
@@ -415,6 +589,7 @@ def run_benchmark_suite(
     eps_grid,
     min_samples_grid,
     top_k=5,
+    retrieval_backend="numpy",
 ):
     started_at = time.perf_counter()
     clustering_results = evaluate_embedding_clusters(
@@ -430,11 +605,13 @@ def run_benchmark_suite(
         label_ids,
         metrics=metrics,
         top_k=top_k,
+        backend=retrieval_backend,
     )
     return {
         "clustering_results": clustering_results,
         "retrieval_results": retrieval_results,
         "elapsed_seconds": round(time.perf_counter() - started_at, 3),
+        "retrieval_backend": retrieval_backend,
     }
 
 
@@ -484,7 +661,7 @@ def export_benchmark_results(
     write_csv(
         retrieval_path,
         retrieval_results,
-        fieldnames=["metric", "top1", "top5", "queries"],
+        fieldnames=["metric", "backend", "top1", "top5", "queries", "fallback_reason"],
     )
     write_csv(
         failures_path,
@@ -569,7 +746,8 @@ def summarize_benchmark(
         for row in best_retrieval:
             lines.append(
                 "  "
-                + f"{row['metric']} top1={row.get('top1')} top5={row.get('top5')} queries={row.get('queries')}"
+                + f"{row['metric']} backend={row.get('backend')} "
+                + f"top1={row.get('top1')} top5={row.get('top5')} queries={row.get('queries')}"
             )
 
     if failed_clusters:

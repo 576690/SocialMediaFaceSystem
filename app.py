@@ -244,7 +244,9 @@ def _remove_runtime_storage():
 def _cookie_files():
     return [
         app_config.weibo_cookie_path,
+        app_config.bilibili_cookie_path,
         app_config.storage_dir / "www.youtube.com_cookies.txt",
+        app_config.x_bearer_token_path,
     ]
 
 
@@ -311,6 +313,129 @@ def _validate_face_quality_payload(data):
     }
 
 
+def _validate_platform_collection_payload(collection):
+    current_platforms = app_config.collection_platforms_config()
+    platforms = json.loads(json.dumps(current_platforms))
+    platform_payloads = collection.get("platforms") or {}
+    if platform_payloads and not isinstance(platform_payloads, dict):
+        raise ValueError("collection.platforms must be an object.")
+
+    legacy_keys = {
+        "source_sync_limit",
+        "weibo_cookie_enabled",
+        "weibo_source_sync_limit",
+        "weibo_timeout_seconds",
+        "weibo_retry_count",
+        "bilibili_cookie_enabled",
+        "bilibili_impersonate",
+        "bilibili_referer",
+    }
+    if any(key in collection for key in legacy_keys):
+        try:
+            source_sync_limit = int(
+                collection.get("source_sync_limit", app_config.source_sync_limit)
+            )
+            weibo_source_sync_limit = int(
+                collection.get(
+                    "weibo_source_sync_limit",
+                    app_config.weibo_source_sync_limit,
+                )
+            )
+            weibo_timeout_seconds = int(
+                collection.get("weibo_timeout_seconds", app_config.weibo_timeout_seconds)
+            )
+            weibo_retry_count = int(
+                collection.get("weibo_retry_count", app_config.weibo_retry_count)
+            )
+        except (TypeError, ValueError):
+            raise ValueError("Invalid collection parameters.")
+
+        for platform in ("bilibili", "youtube", "x", "generic"):
+            platforms[platform]["sync_limit"] = source_sync_limit
+        platforms["weibo"]["sync_limit"] = weibo_source_sync_limit
+        platforms["weibo"]["timeout_seconds"] = weibo_timeout_seconds
+        platforms["weibo"]["retry_count"] = weibo_retry_count
+        platforms["weibo"]["auth_enabled"] = bool(
+            collection.get("weibo_cookie_enabled", app_config.weibo_cookie_enabled)
+        )
+        platforms["bilibili"]["auth_enabled"] = bool(
+            collection.get("bilibili_cookie_enabled", app_config.bilibili_cookie_enabled)
+        )
+        platforms["bilibili"]["impersonate"] = str(
+            collection.get("bilibili_impersonate", app_config.bilibili_impersonate)
+            or ""
+        ).strip()
+        platforms["bilibili"]["referer"] = str(
+            collection.get("bilibili_referer", app_config.bilibili_referer) or ""
+        ).strip()
+
+    for platform, values in platform_payloads.items():
+        platform = str(platform or "").lower()
+        if platform not in platforms:
+            raise ValueError(f"Unsupported collection platform: {platform}.")
+        if not isinstance(values, dict):
+            raise ValueError("Platform collection config must be an object.")
+        target = platforms[platform]
+        for key in (
+            "enabled",
+            "auth_enabled",
+            "sync_limit",
+            "sync_interval_minutes",
+            "timeout_seconds",
+            "retry_count",
+            "impersonate",
+            "referer",
+        ):
+            if key in values and key in target:
+                target[key] = values[key]
+
+    for platform, values in platforms.items():
+        try:
+            values["enabled"] = bool(values.get("enabled", True))
+            if "auth_enabled" in values:
+                values["auth_enabled"] = bool(values.get("auth_enabled", False))
+            values["sync_limit"] = int(values.get("sync_limit"))
+            values["sync_interval_minutes"] = int(
+                values.get("sync_interval_minutes", 0)
+            )
+            values["timeout_seconds"] = int(values.get("timeout_seconds"))
+            values["retry_count"] = int(values.get("retry_count"))
+        except (TypeError, ValueError):
+            raise ValueError(f"Invalid {platform} collection parameters.")
+        if not 1 <= values["sync_limit"] <= 100:
+            raise ValueError(f"{platform}.sync_limit must be between 1 and 100.")
+        if values["sync_interval_minutes"] < 0:
+            raise ValueError(
+                f"{platform}.sync_interval_minutes must be greater than or equal to 0."
+            )
+        if not 5 <= values["timeout_seconds"] <= 120:
+            raise ValueError(f"{platform}.timeout_seconds must be between 5 and 120.")
+        if not 1 <= values["retry_count"] <= 10:
+            raise ValueError(f"{platform}.retry_count must be between 1 and 10.")
+
+    bilibili = platforms["bilibili"]
+    bilibili["impersonate"] = str(bilibili.get("impersonate") or "").strip()
+    bilibili["referer"] = str(bilibili.get("referer") or "").strip()
+    if not bilibili["impersonate"]:
+        raise ValueError("bilibili.impersonate is required.")
+    if not bilibili["referer"]:
+        raise ValueError("bilibili.referer is required.")
+
+    weibo = platforms["weibo"]
+    generic = platforms["generic"]
+    return {
+        "source_sync_limit": generic["sync_limit"],
+        "weibo_cookie_enabled": bool(weibo["auth_enabled"]),
+        "weibo_source_sync_limit": weibo["sync_limit"],
+        "weibo_timeout_seconds": weibo["timeout_seconds"],
+        "weibo_retry_count": weibo["retry_count"],
+        "bilibili_cookie_enabled": bool(bilibili["auth_enabled"]),
+        "bilibili_impersonate": bilibili["impersonate"],
+        "bilibili_referer": bilibili["referer"],
+        "platforms": platforms,
+    }
+
+
 def _validate_runtime_config_payload(data):
     payload = data or {}
     updates = {}
@@ -374,49 +499,7 @@ def _validate_runtime_config_payload(data):
 
     collection = payload.get("collection") or {}
     if collection:
-        try:
-            source_sync_limit = int(collection.get("source_sync_limit"))
-            weibo_cookie_enabled = bool(collection.get("weibo_cookie_enabled"))
-            weibo_source_sync_limit = int(collection.get("weibo_source_sync_limit"))
-            weibo_timeout_seconds = int(collection.get("weibo_timeout_seconds"))
-            weibo_retry_count = int(collection.get("weibo_retry_count"))
-            bilibili_cookie_enabled = bool(
-                collection.get(
-                    "bilibili_cookie_enabled",
-                    app_config.bilibili_cookie_enabled,
-                )
-            )
-            bilibili_impersonate = str(
-                collection.get("bilibili_impersonate", app_config.bilibili_impersonate)
-                or ""
-            ).strip()
-            bilibili_referer = str(
-                collection.get("bilibili_referer", app_config.bilibili_referer) or ""
-            ).strip()
-        except (TypeError, ValueError):
-            raise ValueError("Invalid collection parameters.")
-        if not 1 <= source_sync_limit <= 100:
-            raise ValueError("source_sync_limit must be between 1 and 100.")
-        if not 1 <= weibo_source_sync_limit <= 100:
-            raise ValueError("weibo_source_sync_limit must be between 1 and 100.")
-        if not 5 <= weibo_timeout_seconds <= 120:
-            raise ValueError("weibo_timeout_seconds must be between 5 and 120.")
-        if not 1 <= weibo_retry_count <= 10:
-            raise ValueError("weibo_retry_count must be between 1 and 10.")
-        if not bilibili_impersonate:
-            raise ValueError("bilibili_impersonate is required.")
-        if not bilibili_referer:
-            raise ValueError("bilibili_referer is required.")
-        updates["collection"] = {
-            "source_sync_limit": source_sync_limit,
-            "weibo_cookie_enabled": weibo_cookie_enabled,
-            "weibo_source_sync_limit": weibo_source_sync_limit,
-            "weibo_timeout_seconds": weibo_timeout_seconds,
-            "weibo_retry_count": weibo_retry_count,
-            "bilibili_cookie_enabled": bilibili_cookie_enabled,
-            "bilibili_impersonate": bilibili_impersonate,
-            "bilibili_referer": bilibili_referer,
-        }
+        updates["collection"] = _validate_platform_collection_payload(collection)
 
     transcription = payload.get("transcription") or {}
     if transcription:
@@ -1128,6 +1211,8 @@ async def collect_source(
         )).lower()
         if platform == "x" and source_type == "channel":
             source_type = "x_user"
+        if not app_config.platform_enabled(platform):
+            return {"status": "error", "msg": f"{platform} collection is disabled."}
         adapter_id = data.get("adapter_id") or data.get("source_adapter_id")
         adapter = source_adapter_registry.select_adapter(
             source_url,
@@ -1135,7 +1220,7 @@ async def collect_source(
             source_type=source_type,
             adapter_id=adapter_id,
         )
-        limit_default = adapter.default_limit or app_config.source_sync_limit
+        limit_default = adapter.default_limit or app_config.platform_sync_limit(platform)
         limit = int(data.get("limit") or limit_default)
         keywords = _normalize_keywords(data.get("keywords", []))
         metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}

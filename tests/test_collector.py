@@ -80,6 +80,27 @@ class VideoCollectorTests(unittest.TestCase):
         self.assertEqual(opts["cookiefile"], str(app_config.bilibili_cookie_path))
         self.assertEqual(opts["retry_sleep"], "extractor:1:2")
 
+    def test_bilibili_opts_read_platform_collection_config(self):
+        app_config.data["collection"]["platforms"]["bilibili"].update(
+            {
+                "auth_enabled": False,
+                "timeout_seconds": 44,
+                "retry_count": 7,
+                "impersonate": "chrome110",
+                "referer": "https://www.bilibili.com/platform-test",
+            }
+        )
+        app_config.bilibili_cookie_path.write_text("SESSDATA=demo", encoding="utf-8")
+        self.collector._supports_impersonate_target = lambda target: (True, "supported")
+
+        opts = self.collector._build_ydl_opts("bilibili", download=True)
+
+        self.assertEqual(opts["http_headers"]["Referer"], "https://www.bilibili.com/platform-test")
+        self.assertEqual(opts["impersonate"], "chrome110")
+        self.assertEqual(opts["socket_timeout"], 44)
+        self.assertEqual(opts["extractor_retries"], 7)
+        self.assertNotIn("cookiefile", opts)
+
     def test_bilibili_opts_drop_impersonate_when_runtime_does_not_support_it(self):
         app_config.bilibili_cookie_path.write_text("SESSDATA=demo", encoding="utf-8")
         self.collector._supports_impersonate_target = (

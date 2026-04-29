@@ -47,6 +47,10 @@ class XUserCollector:
         return any(keyword.lower() in haystack for keyword in keywords)
 
     def load_bearer_token(self):
+        if not app_config.platform_auth_enabled("x"):
+            raise RuntimeError(
+                "X bearer token authentication is disabled in the current configuration."
+            )
         if not self.bearer_token_file.exists():
             raise RuntimeError(
                 f"X bearer token file is missing: {self.bearer_token_file}"
@@ -155,7 +159,9 @@ class XUserCollector:
         return metrics if isinstance(metrics, dict) else {}
 
     def fetch_user_posts(self, source, limit=None, keywords=None):
-        limit = max(int(limit or app_config.source_sync_limit), 1)
+        if not app_config.platform_enabled("x"):
+            raise RuntimeError("X collection is disabled in the current configuration.")
+        limit = max(int(limit or app_config.platform_sync_limit("x")), 1)
         keywords = self.normalize_keywords(keywords)
         normalized_source = self.normalize_user_source(source)
         username = normalized_source["username"]

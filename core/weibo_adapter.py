@@ -38,8 +38,10 @@ class WeiboUserCollector:
         page_parser_cls=None,
     ):
         self.cookie_file = Path(cookie_file or app_config.weibo_cookie_path)
-        self.retries = int(retries or app_config.weibo_retry_count)
-        self.timeout_seconds = int(timeout_seconds or app_config.weibo_timeout_seconds)
+        self.retries = int(retries or app_config.platform_retry_count("weibo"))
+        self.timeout_seconds = int(
+            timeout_seconds or app_config.platform_timeout_seconds("weibo")
+        )
         self.index_parser_cls = index_parser_cls
         self.page_parser_cls = page_parser_cls
 
@@ -62,7 +64,7 @@ class WeiboUserCollector:
         return normalized
 
     def load_cookie(self):
-        if not app_config.weibo_cookie_enabled:
+        if not app_config.platform_auth_enabled("weibo"):
             raise RuntimeError("Weibo cookies are disabled in the current configuration.")
         if not self.cookie_file.exists():
             raise RuntimeError(
@@ -319,7 +321,9 @@ class WeiboUserCollector:
         )
 
     def fetch_user_posts(self, source, limit=None, keywords=None):
-        limit = max(int(limit or app_config.weibo_source_sync_limit), 1)
+        if not app_config.platform_enabled("weibo"):
+            raise RuntimeError("Weibo collection is disabled in the current configuration.")
+        limit = max(int(limit or app_config.platform_sync_limit("weibo")), 1)
         keywords = self.normalize_keywords(keywords)
         normalized_source = self.normalize_user_source(source)
         cookie = self.load_cookie()

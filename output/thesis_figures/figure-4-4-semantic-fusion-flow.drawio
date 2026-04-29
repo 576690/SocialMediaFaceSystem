@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="drawio" version="26.0.0"><diagram name="figure-4-4-semantic-fusion-flow"><mxGraphModel dx="1200" dy="800" grid="1" gridSize="10"><root>
+<mxCell id="0"/><mxCell id="1" parent="0"/>
+
+<mxCell id="2" value="内容标题与来源元数据" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontColor=#000000;fontFamily=SimSun;fontSize=14;" vertex="1" parent="1"><mxGeometry x="80" y="70" width="190" height="55" as="geometry"/></mxCell>
+<mxCell id="3" value="图文正文" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontColor=#000000;fontFamily=SimSun;fontSize=14;" vertex="1" parent="1"><mxGeometry x="80" y="160" width="190" height="55" as="geometry"/></mxCell>
+<mxCell id="4" value="字幕 / ASR 片段" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontColor=#000000;fontFamily=SimSun;fontSize=14;" vertex="1" parent="1"><mxGeometry x="80" y="250" width="190" height="55" as="geometry"/></mxCell>
+<mxCell id="5" value="Florence-2 视觉描述" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontColor=#000000;fontFamily=SimSun;fontSize=14;" vertex="1" parent="1"><mxGeometry x="80" y="340" width="190" height="55" as="geometry"/></mxCell>
+<mxCell id="6" value="按时间戳与人脸记录对齐" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontColor=#000000;fontFamily=SimSun;fontSize=14;" vertex="1" parent="1"><mxGeometry x="360" y="210" width="220" height="70" as="geometry"/></mxCell>
+<mxCell id="7" value="去重、截断与结构化组织" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontColor=#000000;fontFamily=SimSun;fontSize=14;" vertex="1" parent="1"><mxGeometry x="660" y="210" width="220" height="70" as="geometry"/></mxCell>
+<mxCell id="8" value="semantic_text&#xa;Visual / Speech / Post" style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;fontColor=#000000;fontFamily=SimSun;fontSize=14;" vertex="1" parent="1"><mxGeometry x="960" y="200" width="190" height="90" as="geometry"/></mxCell>
+<mxCell id="9" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#333333;fontColor=#000000;fontFamily=SimSun;fontSize=12;" edge="1" parent="1" source="2" target="6"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="10" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#333333;fontColor=#000000;fontFamily=SimSun;fontSize=12;" edge="1" parent="1" source="3" target="6"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="11" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#333333;fontColor=#000000;fontFamily=SimSun;fontSize=12;" edge="1" parent="1" source="4" target="6"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="12" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#333333;fontColor=#000000;fontFamily=SimSun;fontSize=12;" edge="1" parent="1" source="5" target="6"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="13" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#333333;fontColor=#000000;fontFamily=SimSun;fontSize=12;" edge="1" parent="1" source="6" target="7"><mxGeometry relative="1" as="geometry"/></mxCell>
+<mxCell id="14" value="" style="edgeStyle=orthogonalEdgeStyle;rounded=1;orthogonalLoop=1;jettySize=auto;html=1;endArrow=block;strokeColor=#333333;fontColor=#000000;fontFamily=SimSun;fontSize=12;" edge="1" parent="1" source="7" target="8"><mxGeometry relative="1" as="geometry"/></mxCell>
+
+</root></mxGraphModel></diagram></mxfile>

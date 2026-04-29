@@ -82,20 +82,28 @@ class VideoCollector:
             return f"https://www.bilibili.com/video/{entry_id}"
         return ""
 
-    def _base_ydl_opts(self):
+    def _base_ydl_opts(self, platform=None):
+        platform = (platform or "").lower()
         cookie_path = app_config.storage_dir / "www.youtube.com_cookies.txt"
         ydl_opts = {
             "format": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
             "outtmpl": str(self.save_dir / "%(id)s.%(ext)s"),
             "quiet": True,
             "no_warnings": True,
+            "socket_timeout": app_config.platform_timeout_seconds(platform or "generic"),
+            "retries": app_config.platform_retry_count(platform or "generic"),
+            "extractor_retries": app_config.platform_retry_count(platform or "generic"),
             "writesubtitles": True,
             "writeautomaticsub": True,
             "subtitleslangs": app_config.subtitle_languages,
             "subtitlesformat": app_config.subtitle_formats,
             "merge_output_format": "mp4",
         }
-        if cookie_path.exists():
+        if (
+            platform == "youtube"
+            and app_config.platform_auth_enabled("youtube")
+            and cookie_path.exists()
+        ):
             ydl_opts["cookiefile"] = str(cookie_path)
         return ydl_opts
 
@@ -125,11 +133,13 @@ class VideoCollector:
             "quiet": True,
             "no_warnings": True,
             "http_headers": self._bilibili_headers(),
-            "extractor_retries": 5,
+            "socket_timeout": app_config.platform_timeout_seconds("bilibili"),
+            "retries": app_config.platform_retry_count("bilibili"),
+            "extractor_retries": app_config.platform_retry_count("bilibili"),
             "retry_sleep": "extractor:1:2",
         }
         if download:
-            opts.update(self._base_ydl_opts())
+            opts.update(self._base_ydl_opts(platform="bilibili"))
             opts["http_headers"] = self._bilibili_headers()
 
         requested_target = app_config.bilibili_impersonate
@@ -144,7 +154,10 @@ class VideoCollector:
         if impersonate_enabled:
             opts["impersonate"] = requested_target
 
-        if app_config.bilibili_cookie_enabled and app_config.bilibili_cookie_path.exists():
+        if (
+            app_config.platform_auth_enabled("bilibili")
+            and app_config.bilibili_cookie_path.exists()
+        ):
             opts["cookiefile"] = str(app_config.bilibili_cookie_path)
         return opts
 
@@ -153,9 +166,22 @@ class VideoCollector:
         if platform == "bilibili":
             opts = self._bilibili_ydl_opts(download=download)
         elif download:
-            opts = self._base_ydl_opts()
+            opts = self._base_ydl_opts(platform=platform)
         else:
-            opts = {"quiet": True, "no_warnings": True}
+            opts = {
+                "quiet": True,
+                "no_warnings": True,
+                "socket_timeout": app_config.platform_timeout_seconds(platform or "generic"),
+                "retries": app_config.platform_retry_count(platform or "generic"),
+                "extractor_retries": app_config.platform_retry_count(platform or "generic"),
+            }
+            youtube_cookie_path = app_config.storage_dir / "www.youtube.com_cookies.txt"
+            if (
+                platform == "youtube"
+                and app_config.platform_auth_enabled("youtube")
+                and youtube_cookie_path.exists()
+            ):
+                opts["cookiefile"] = str(youtube_cookie_path)
 
         if extra_opts:
             opts.update(extra_opts)
@@ -228,8 +254,10 @@ class VideoCollector:
         source_type=None,
         metadata=None,
     ):
-        limit = limit or app_config.source_sync_limit
         platform = (platform or self.detect_platform(source_url)).lower()
+        if not app_config.platform_enabled(platform):
+            raise RuntimeError(f"{platform} collection is disabled in the current configuration.")
+        limit = limit or app_config.platform_sync_limit(platform)
         source_type = (source_type or "channel").lower()
         metadata = metadata or {}
 
@@ -337,7 +365,7 @@ class VideoCollector:
                     timeout=(
                         app_config.weibo_timeout_seconds
                         if platform == "weibo"
-                        else 20
+                        else app_config.platform_timeout_seconds(platform)
                     ),
                 )
                 response.raise_for_status()

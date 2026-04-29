@@ -48,14 +48,6 @@
       box-shadow: inset 3px 0 0 #f59e0b;
     }
 
-    .admin-subnav-item.active,
-    .config-subnav-item.active {
-      background: #0f172a;
-      border-color: #0f172a;
-      color: #fff;
-      box-shadow: 0 10px 24px rgba(15, 23, 42, .16);
-    }
-
     .modal-open {
       overflow: hidden;
     }
@@ -75,7 +67,7 @@
     </div>
     <nav class="mt-6 space-y-2">
       <button data-view="text" onclick="switchView('text')"
-        class="nav-item active flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
+        class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
         <span>以文搜图</span><span>Text</span>
       </button>
       <button data-view="image" onclick="switchView('image')"
@@ -83,7 +75,7 @@
         <span>以图搜图</span><span>Image</span>
       </button>
       <button data-view="people" onclick="switchView('people')"
-        class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
+        class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80 active">
         <span>人物库</span><span>People</span>
       </button>
       <button data-view="admin" onclick="switchView('admin')"
@@ -102,8 +94,8 @@
         <div class="flex items-center gap-3">
           <button onclick="toggleSidebar(true)" class="rounded-2xl bg-slate-950 px-3 py-2 text-sm text-white lg:hidden">菜单</button>
           <div>
-            <p id="viewKicker" class="ui text-xs uppercase tracking-[0.25em] text-teal-700">Text Search</p>
-            <h2 id="viewTitle" class="ui text-2xl font-bold">以文搜图</h2>
+            <p id="viewKicker" class="ui text-xs uppercase tracking-[0.25em] text-teal-700">People</p>
+            <h2 id="viewTitle" class="ui text-2xl font-bold">???</h2>
           </div>
         </div>
         <button id="btnLogout" onclick="logoutAdmin()"
@@ -112,7 +104,7 @@
     </header>
 
     <main class="px-4 py-6 lg:px-8">
-      <section id="view-text" class="view space-y-6">
+      <section id="view-text" class="view hidden space-y-6">
         <div class="glass rounded-3xl p-6">
           <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
@@ -166,7 +158,7 @@
         </div>
       </section>
 
-      <section id="view-people" class="view hidden space-y-6">
+      <section id="view-people" class="view space-y-6">
         <div class="glass rounded-3xl p-6">
           <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
             <div>
@@ -192,28 +184,7 @@
         <div id="adminGate" class="glass rounded-3xl p-6"></div>
 
         <div id="adminPanel" class="hidden space-y-6">
-          <div class="glass rounded-3xl p-3">
-            <div class="flex gap-2 overflow-x-auto pb-1">
-              <button type="button" data-admin-subview-tab="manual" onclick="switchAdminSubView('manual')"
-                class="admin-subnav-item active shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600">
-                手动导入
-              </button>
-              <button type="button" data-admin-subview-tab="sources" onclick="switchAdminSubView('sources')"
-                class="admin-subnav-item shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600">
-                账号监测
-              </button>
-              <button type="button" data-admin-subview-tab="config" onclick="switchAdminSubView('config')"
-                class="admin-subnav-item shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600">
-                核心参数
-              </button>
-              <button type="button" data-admin-subview-tab="reset" onclick="switchAdminSubView('reset')"
-                class="admin-subnav-item shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600">
-                重置系统
-              </button>
-            </div>
-          </div>
-
-          <div data-admin-subview="manual" class="admin-subview grid gap-6 xl:grid-cols-2">
+          <div class="grid gap-6 xl:grid-cols-3">
             <div class="glass rounded-3xl p-6">
               <h2 class="ui text-xl font-bold">单链接采集</h2>
               <p class="mt-2 text-sm text-slate-500">下载视频并自动使用字幕或离线语音识别。</p>
@@ -224,25 +195,6 @@
                   class="w-full rounded-2xl bg-slate-950 px-4 py-3 text-white">开始采集</button>
               </div>
             </div>
-            <div class="glass rounded-3xl p-6">
-              <h2 class="ui text-xl font-bold">图文导入</h2>
-              <p class="mt-2 text-sm text-slate-500">图片进入人脸流水线，正文参与语义融合。</p>
-              <div class="mt-4 space-y-3">
-                <input id="postUrl" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none"
-                  placeholder="微博链接，可选">
-                <textarea id="postText" rows="3"
-                  class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none"
-                  placeholder="正文文本，可选"></textarea>
-                <textarea id="postImages" rows="4"
-                  class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none"
-                  placeholder="图片 URL，每行一个"></textarea>
-                <button id="btnImportPost" onclick="importPost()"
-                  class="w-full rounded-2xl bg-sky-700 px-4 py-3 text-white">导入图文</button>
-              </div>
-            </div>
-          </div>
-
-          <div data-admin-subview="sources" class="admin-subview hidden grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
             <div class="glass rounded-3xl p-6">
               <h2 class="ui text-xl font-bold">账号同步</h2>
               <p class="mt-2 text-sm text-slate-500">登记频道、账号或微博用户源，支持关键词过滤。</p>
@@ -266,6 +218,25 @@
               </div>
             </div>
             <div class="glass rounded-3xl p-6">
+              <h2 class="ui text-xl font-bold">图文导入</h2>
+              <p class="mt-2 text-sm text-slate-500">图片进入人脸流水线，正文参与语义融合。</p>
+              <div class="mt-4 space-y-3">
+                <input id="postUrl" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none"
+                  placeholder="微博链接，可选">
+                <textarea id="postText" rows="3"
+                  class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none"
+                  placeholder="正文文本，可选"></textarea>
+                <textarea id="postImages" rows="4"
+                  class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none"
+                  placeholder="图片 URL，每行一个"></textarea>
+                <button id="btnImportPost" onclick="importPost()"
+                  class="w-full rounded-2xl bg-sky-700 px-4 py-3 text-white">导入图文</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid gap-6 xl:grid-cols-[1fr_1.1fr]">
+            <div class="glass rounded-3xl p-6">
               <h2 class="ui text-xl font-bold">已登记采集源</h2>
               <p class="mt-2 text-sm text-slate-500">管理已登记的采集源，可仅删除登记，也可连同关联数据清理。</p>
               <div id="sourceList" class="mt-5 grid gap-4"></div>
@@ -284,9 +255,7 @@
                 <div id="sourceAdapterList" class="mt-4 grid gap-3"></div>
               </div>
             </div>
-          </div>
 
-          <div data-admin-subview="config" class="admin-subview hidden">
             <div class="glass rounded-3xl p-6">
               <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
@@ -297,35 +266,10 @@
                   class="rounded-2xl bg-slate-950 px-4 py-3 text-white">保存配置</button>
               </div>
 
-              <div class="mt-5 space-y-4">
-                <div class="rounded-3xl bg-white/70 p-3">
-                  <div class="flex gap-2 overflow-x-auto pb-1">
-                    <button type="button" data-config-subview-tab="collection" onclick="switchConfigSubView('collection')"
-                      class="config-subnav-item active shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600">
-                      采集参数
-                    </button>
-                    <button type="button" data-config-subview-tab="search" onclick="switchConfigSubView('search')"
-                      class="config-subnav-item shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600">
-                      检索参数
-                    </button>
-                    <button type="button" data-config-subview-tab="prompt" onclick="switchConfigSubView('prompt')"
-                      class="config-subnav-item shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600">
-                      Prompt 配置
-                    </button>
-                    <button type="button" data-config-subview-tab="cluster" onclick="switchConfigSubView('cluster')"
-                      class="config-subnav-item shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600">
-                      聚类参数
-                    </button>
-                    <button type="button" data-config-subview-tab="face" onclick="switchConfigSubView('face')"
-                      class="config-subnav-item shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600">
-                      人脸过滤
-                    </button>
-                  </div>
-                </div>
-
-                <div data-config-subview="collection" class="config-subview rounded-3xl bg-white/70 p-4">
+              <div class="mt-5 grid gap-4">
+                <div class="rounded-3xl bg-white/70 p-4">
                   <h3 class="ui font-bold">采集参数</h3>
-                  <div class="hidden">
+                  <div class="mt-3 grid gap-3 md:grid-cols-3">
                     <label class="text-sm text-slate-600">抽帧间隔秒
                       <input id="configFrameSample" type="number" min="0.2" max="30" step="0.1"
                         class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
@@ -351,145 +295,9 @@
                         class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
                     </label>
                   </div>
-                  <div class="mt-3 grid gap-3 md:grid-cols-3">
-                    <label class="text-sm text-slate-600">抽帧间隔秒
-                      <input id="configFrameSampleVisible" type="number" min="0.2" max="30" step="0.1"
-                        class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                    </label>
-                  </div>
-                  <div class="mt-4 grid gap-3 lg:grid-cols-2" id="collectionPlatformConfigGrid">
-                    <section class="rounded-2xl border border-slate-200 bg-white/80 p-4">
-                      <div class="flex items-center justify-between gap-3">
-                        <h4 class="text-sm font-semibold text-slate-800">微博</h4>
-                        <label class="flex items-center gap-2 text-sm text-slate-600">启用
-                          <input id="configPlatformWeiboEnabled" type="checkbox" class="h-4 w-4">
-                        </label>
-                      </div>
-                      <div class="mt-3 grid gap-3 sm:grid-cols-2">
-                        <label class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">启用 Cookie
-                          <input id="configPlatformWeiboAuth" type="checkbox" class="h-4 w-4">
-                        </label>
-                        <label class="text-sm text-slate-600">同步数量
-                          <input id="configPlatformWeiboLimit" type="number" min="1" max="100" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">同步间隔分钟
-                          <input id="configPlatformWeiboInterval" type="number" min="0" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">超时秒
-                          <input id="configPlatformWeiboTimeout" type="number" min="5" max="120" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">重试次数
-                          <input id="configPlatformWeiboRetry" type="number" min="1" max="10" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                      </div>
-                    </section>
-                    <section class="rounded-2xl border border-slate-200 bg-white/80 p-4">
-                      <div class="flex items-center justify-between gap-3">
-                        <h4 class="text-sm font-semibold text-slate-800">Bilibili</h4>
-                        <label class="flex items-center gap-2 text-sm text-slate-600">启用
-                          <input id="configPlatformBilibiliEnabled" type="checkbox" class="h-4 w-4">
-                        </label>
-                      </div>
-                      <div class="mt-3 grid gap-3 sm:grid-cols-2">
-                        <label class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">启用 Cookie
-                          <input id="configPlatformBilibiliAuth" type="checkbox" class="h-4 w-4">
-                        </label>
-                        <label class="text-sm text-slate-600">同步数量
-                          <input id="configPlatformBilibiliLimit" type="number" min="1" max="100" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">同步间隔分钟
-                          <input id="configPlatformBilibiliInterval" type="number" min="0" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">超时秒
-                          <input id="configPlatformBilibiliTimeout" type="number" min="5" max="120" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">重试次数
-                          <input id="configPlatformBilibiliRetry" type="number" min="1" max="10" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">Impersonate
-                          <input id="configPlatformBilibiliImpersonate" type="text" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600 sm:col-span-2">Referer
-                          <input id="configPlatformBilibiliReferer" type="text" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                      </div>
-                    </section>
-                    <section class="rounded-2xl border border-slate-200 bg-white/80 p-4">
-                      <div class="flex items-center justify-between gap-3">
-                        <h4 class="text-sm font-semibold text-slate-800">YouTube</h4>
-                        <label class="flex items-center gap-2 text-sm text-slate-600">启用
-                          <input id="configPlatformYoutubeEnabled" type="checkbox" class="h-4 w-4">
-                        </label>
-                      </div>
-                      <div class="mt-3 grid gap-3 sm:grid-cols-2">
-                        <label class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">启用 Cookie
-                          <input id="configPlatformYoutubeAuth" type="checkbox" class="h-4 w-4">
-                        </label>
-                        <label class="text-sm text-slate-600">同步数量
-                          <input id="configPlatformYoutubeLimit" type="number" min="1" max="100" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">同步间隔分钟
-                          <input id="configPlatformYoutubeInterval" type="number" min="0" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">超时秒
-                          <input id="configPlatformYoutubeTimeout" type="number" min="5" max="120" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">重试次数
-                          <input id="configPlatformYoutubeRetry" type="number" min="1" max="10" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                      </div>
-                    </section>
-                    <section class="rounded-2xl border border-slate-200 bg-white/80 p-4">
-                      <div class="flex items-center justify-between gap-3">
-                        <h4 class="text-sm font-semibold text-slate-800">X</h4>
-                        <label class="flex items-center gap-2 text-sm text-slate-600">启用
-                          <input id="configPlatformXEnabled" type="checkbox" class="h-4 w-4">
-                        </label>
-                      </div>
-                      <div class="mt-3 grid gap-3 sm:grid-cols-2">
-                        <label class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">启用认证令牌
-                          <input id="configPlatformXAuth" type="checkbox" class="h-4 w-4">
-                        </label>
-                        <label class="text-sm text-slate-600">同步数量
-                          <input id="configPlatformXLimit" type="number" min="1" max="100" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">同步间隔分钟
-                          <input id="configPlatformXInterval" type="number" min="0" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">超时秒
-                          <input id="configPlatformXTimeout" type="number" min="5" max="120" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">重试次数
-                          <input id="configPlatformXRetry" type="number" min="1" max="10" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                      </div>
-                    </section>
-                    <section class="rounded-2xl border border-slate-200 bg-white/80 p-4 lg:col-span-2">
-                      <div class="flex items-center justify-between gap-3">
-                        <h4 class="text-sm font-semibold text-slate-800">通用链接</h4>
-                        <label class="flex items-center gap-2 text-sm text-slate-600">启用
-                          <input id="configPlatformGenericEnabled" type="checkbox" class="h-4 w-4">
-                        </label>
-                      </div>
-                      <div class="mt-3 grid gap-3 sm:grid-cols-4">
-                        <label class="text-sm text-slate-600">同步数量
-                          <input id="configPlatformGenericLimit" type="number" min="1" max="100" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">同步间隔分钟
-                          <input id="configPlatformGenericInterval" type="number" min="0" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">超时秒
-                          <input id="configPlatformGenericTimeout" type="number" min="5" max="120" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">重试次数
-                          <input id="configPlatformGenericRetry" type="number" min="1" max="10" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                      </div>
-                    </section>
-                  </div>
                 </div>
 
-                <div data-config-subview="search" class="config-subview hidden rounded-3xl bg-white/70 p-4">
+                <div class="rounded-3xl bg-white/70 p-4">
                   <h3 class="ui font-bold">检索参数</h3>
                   <div class="mt-3 grid gap-3 md:grid-cols-3">
                     <label class="text-sm text-slate-600">文本阈值
@@ -511,7 +319,7 @@
                   </div>
                 </div>
 
-                <div data-config-subview="prompt" class="config-subview hidden rounded-3xl bg-white/70 p-4">
+                <div class="rounded-3xl bg-white/70 p-4">
                   <h3 class="ui font-bold">Prompt 配置</h3>
                   <div class="mt-3 grid gap-3 md:grid-cols-3">
                     <label class="text-sm text-slate-600">语义文档风格
@@ -548,7 +356,7 @@
                   </div>
                 </div>
 
-                <div data-config-subview="cluster" class="config-subview hidden rounded-3xl bg-white/70 p-4">
+                <div class="rounded-3xl bg-white/70 p-4">
                   <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>
                       <h3 class="ui font-bold">聚类参数</h3>
@@ -579,7 +387,7 @@
                   </div>
                 </div>
 
-                <div data-config-subview="face" class="config-subview hidden rounded-3xl bg-white/70 p-4">
+                <div class="rounded-3xl bg-white/70 p-4">
                   <h3 class="ui font-bold">人脸过滤参数</h3>
                   <div class="mt-3 grid gap-3 md:grid-cols-3">
                     <label class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">
@@ -612,16 +420,14 @@
             </div>
           </div>
 
-          <div data-admin-subview="reset" class="admin-subview hidden">
-            <div class="glass rounded-3xl border border-red-200 p-6">
-              <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <h2 class="ui text-xl font-bold text-red-700">危险操作</h2>
-                  <p class="mt-2 text-sm text-slate-500">重置会清空数据库、索引、派生文件和系统配置；默认保留 `storage/videos`、微博与 YouTube cookie 文件。</p>
-                </div>
-                <button id="btnResetSystem" onclick="openResetSystemModal()"
-                  class="rounded-2xl bg-red-700 px-5 py-3 text-white">重置系统</button>
+          <div class="glass rounded-3xl border border-red-200 p-6">
+            <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h2 class="ui text-xl font-bold text-red-700">危险操作</h2>
+                <p class="mt-2 text-sm text-slate-500">重置会清空数据库、索引、派生文件和系统配置；默认保留 `storage/videos`、微博与 YouTube cookie 文件。</p>
               </div>
+              <button id="btnResetSystem" onclick="openResetSystemModal()"
+                class="rounded-2xl bg-red-700 px-5 py-3 text-white">重置系统</button>
             </div>
           </div>
         </div>
@@ -771,25 +577,7 @@
       dangerAction: null,
       sourceAdapters: [],
       sourcePlatformOptions: [],
-      adminSubView: "manual",
-      configSubView: "collection",
       admin: { initialized: false, authenticated: false }
-    };
-
-    const platformConfigDefaults = {
-      weibo: { enabled: true, auth_enabled: true, sync_limit: 10, sync_interval_minutes: 0, timeout_seconds: 15, retry_count: 3 },
-      bilibili: { enabled: true, auth_enabled: true, sync_limit: 10, sync_interval_minutes: 0, timeout_seconds: 20, retry_count: 5, impersonate: "chrome", referer: "https://www.bilibili.com/" },
-      youtube: { enabled: true, auth_enabled: true, sync_limit: 10, sync_interval_minutes: 0, timeout_seconds: 20, retry_count: 3 },
-      x: { enabled: true, auth_enabled: true, sync_limit: 10, sync_interval_minutes: 0, timeout_seconds: 20, retry_count: 3 },
-      generic: { enabled: true, sync_limit: 10, sync_interval_minutes: 0, timeout_seconds: 20, retry_count: 3 }
-    };
-
-    const platformConfigIds = {
-      weibo: "Weibo",
-      bilibili: "Bilibili",
-      youtube: "Youtube",
-      x: "X",
-      generic: "Generic"
     };
 
     const safeText = (v, f = "暂无") => v && String(v).trim() ? String(v).trim() : f;
@@ -845,27 +633,6 @@
         loadAdminStatus();
         loadSystemStatus();
       }
-    }
-
-    function switchAdminSubView(subView) {
-      state.adminSubView = subView || "manual";
-      document.querySelectorAll("[data-admin-subview]").forEach(el => {
-        el.classList.toggle("hidden", el.dataset.adminSubview !== state.adminSubView);
-      });
-      document.querySelectorAll("[data-admin-subview-tab]").forEach(tab => {
-        tab.classList.toggle("active", tab.dataset.adminSubviewTab === state.adminSubView);
-      });
-      if (state.adminSubView === "config") switchConfigSubView("collection");
-    }
-
-    function switchConfigSubView(subView) {
-      state.configSubView = subView || "collection";
-      document.querySelectorAll("[data-config-subview]").forEach(el => {
-        el.classList.toggle("hidden", el.dataset.configSubview !== state.configSubView);
-      });
-      document.querySelectorAll("[data-config-subview-tab]").forEach(tab => {
-        tab.classList.toggle("active", tab.dataset.configSubviewTab === state.configSubView);
-      });
     }
 
     function setModalOpen(open) {
@@ -928,7 +695,6 @@
       }
       gate.classList.add("hidden");
       panel.classList.remove("hidden");
-      switchAdminSubView(state.adminSubView || "manual");
     }
 
     async function setupAdmin() {
@@ -1103,79 +869,15 @@
       showToast("适配器配置已删除。", "success");
     }
 
-    function collectionPlatformsFromConfig(config) {
-      const collection = (config && config.collection) || {};
-      const incoming = collection.platforms || {};
-      const merged = {};
-      Object.keys(platformConfigDefaults).forEach((key) => {
-        merged[key] = { ...platformConfigDefaults[key], ...((incoming && incoming[key]) || {}) };
-      });
-      if (!collection.platforms) {
-        merged.generic.sync_limit = Number(collection.source_sync_limit || merged.generic.sync_limit);
-        ["bilibili", "youtube", "x"].forEach((key) => { merged[key].sync_limit = merged.generic.sync_limit; });
-        merged.weibo.auth_enabled = Boolean(collection.weibo_cookie_enabled);
-        merged.weibo.sync_limit = Number(collection.weibo_source_sync_limit || merged.weibo.sync_limit);
-        merged.weibo.timeout_seconds = Number(collection.weibo_timeout_seconds || merged.weibo.timeout_seconds);
-        merged.weibo.retry_count = Number(collection.weibo_retry_count || merged.weibo.retry_count);
-        merged.bilibili.auth_enabled = collection.bilibili_cookie_enabled !== false;
-        merged.bilibili.impersonate = collection.bilibili_impersonate || merged.bilibili.impersonate;
-        merged.bilibili.referer = collection.bilibili_referer || merged.bilibili.referer;
-      }
-      return merged;
-    }
-
-    function setPlatformConfigFormValue(platform, cfg) {
-      const suffix = platformConfigIds[platform];
-      document.getElementById(`configPlatform${suffix}Enabled`).checked = Boolean(cfg.enabled);
-      document.getElementById(`configPlatform${suffix}Limit`).value = cfg.sync_limit;
-      document.getElementById(`configPlatform${suffix}Interval`).value = cfg.sync_interval_minutes;
-      document.getElementById(`configPlatform${suffix}Timeout`).value = cfg.timeout_seconds;
-      document.getElementById(`configPlatform${suffix}Retry`).value = cfg.retry_count;
-      const authInput = document.getElementById(`configPlatform${suffix}Auth`);
-      if (authInput) authInput.checked = Boolean(cfg.auth_enabled);
-      if (platform === "bilibili") {
-        document.getElementById("configPlatformBilibiliImpersonate").value = cfg.impersonate || "chrome";
-        document.getElementById("configPlatformBilibiliReferer").value = cfg.referer || "https://www.bilibili.com/";
-      }
-    }
-
-    function collectPlatformConfigFormValue(platform) {
-      const suffix = platformConfigIds[platform];
-      const cfg = {
-        enabled: document.getElementById(`configPlatform${suffix}Enabled`).checked,
-        sync_limit: Number(document.getElementById(`configPlatform${suffix}Limit`).value),
-        sync_interval_minutes: Number(document.getElementById(`configPlatform${suffix}Interval`).value),
-        timeout_seconds: Number(document.getElementById(`configPlatform${suffix}Timeout`).value),
-        retry_count: Number(document.getElementById(`configPlatform${suffix}Retry`).value)
-      };
-      const authInput = document.getElementById(`configPlatform${suffix}Auth`);
-      if (authInput) cfg.auth_enabled = authInput.checked;
-      if (platform === "bilibili") {
-        cfg.impersonate = document.getElementById("configPlatformBilibiliImpersonate").value.trim();
-        cfg.referer = document.getElementById("configPlatformBilibiliReferer").value.trim();
-      }
-      return cfg;
-    }
-
-    function collectPlatformConfigs() {
-      return Object.keys(platformConfigDefaults).reduce((acc, platform) => {
-        acc[platform] = collectPlatformConfigFormValue(platform);
-        return acc;
-      }, {});
-    }
-
     function populateRuntimeConfig(config) {
       if (!config) return;
       state.runtimeConfig = config;
       document.getElementById("configFrameSample").value = config.processing.frame_sample_seconds;
-      document.getElementById("configFrameSampleVisible").value = config.processing.frame_sample_seconds;
-      const platforms = collectionPlatformsFromConfig(config);
-      Object.keys(platforms).forEach((platform) => setPlatformConfigFormValue(platform, platforms[platform]));
-      document.getElementById("configSourceLimit").value = platforms.generic.sync_limit;
-      document.getElementById("configWeiboLimit").value = platforms.weibo.sync_limit;
-      document.getElementById("configWeiboCookieEnabled").checked = Boolean(platforms.weibo.auth_enabled);
-      document.getElementById("configWeiboTimeout").value = platforms.weibo.timeout_seconds;
-      document.getElementById("configWeiboRetry").value = platforms.weibo.retry_count;
+      document.getElementById("configSourceLimit").value = config.collection.source_sync_limit;
+      document.getElementById("configWeiboLimit").value = config.collection.weibo_source_sync_limit;
+      document.getElementById("configWeiboCookieEnabled").checked = Boolean(config.collection.weibo_cookie_enabled);
+      document.getElementById("configWeiboTimeout").value = config.collection.weibo_timeout_seconds;
+      document.getElementById("configWeiboRetry").value = config.collection.weibo_retry_count;
       document.getElementById("configTextThreshold").value = config.search.text_threshold;
       document.getElementById("configImageThreshold").value = config.search.image_cosine_threshold;
       document.getElementById("configTextTopK").value = config.search.text_top_k;
@@ -1207,21 +909,16 @@
     }
 
     async function saveSystemConfig() {
-      const platforms = collectPlatformConfigs();
       const payload = {
         processing: {
-          frame_sample_seconds: Number(document.getElementById("configFrameSampleVisible").value)
+          frame_sample_seconds: Number(document.getElementById("configFrameSample").value)
         },
         collection: {
-          source_sync_limit: platforms.generic.sync_limit,
-          weibo_cookie_enabled: Boolean(platforms.weibo.auth_enabled),
-          weibo_source_sync_limit: platforms.weibo.sync_limit,
-          weibo_timeout_seconds: platforms.weibo.timeout_seconds,
-          weibo_retry_count: platforms.weibo.retry_count,
-          bilibili_cookie_enabled: Boolean(platforms.bilibili.auth_enabled),
-          bilibili_impersonate: platforms.bilibili.impersonate,
-          bilibili_referer: platforms.bilibili.referer,
-          platforms
+          source_sync_limit: Number(document.getElementById("configSourceLimit").value),
+          weibo_cookie_enabled: document.getElementById("configWeiboCookieEnabled").checked,
+          weibo_source_sync_limit: Number(document.getElementById("configWeiboLimit").value),
+          weibo_timeout_seconds: Number(document.getElementById("configWeiboTimeout").value),
+          weibo_retry_count: Number(document.getElementById("configWeiboRetry").value)
         },
         search: {
           text_threshold: Number(document.getElementById("configTextThreshold").value),
