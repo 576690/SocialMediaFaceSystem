@@ -40,10 +40,11 @@ source_adapter_registry = SourceAdapterRegistry(collector)
 _task_state = {"active": 0, "maintenance": False}
 _task_state_lock = threading.Lock()
 _task_local = threading.local()
-_admin_sessions = set()
-_admin_sessions_lock = threading.Lock()
+_sessions = {}
+_sessions_lock = threading.Lock()
+_session_cookie_name = "face_session"
 _admin_cookie_name = "face_admin_session"
-_admin_session_seconds = 8 * 60 * 60
+_session_seconds = 8 * 60 * 60
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/faces", StaticFiles(directory=str(app_config.faces_dir)), name="faces")
@@ -102,56 +103,134 @@ def _system_status_payload():
     }
 
 
-def _create_admin_session(response: Response):
+def _public_user_payload(user):
+    if not user:
+        return None
+    return {
+        "id": user.get("id"),
+        "username": user.get("username"),
+        "role": user.get("role"),
+        "enabled": bool(user.get("enabled")),
+        "created_at": user.get("created_at"),
+        "updated_at": user.get("updated_at"),
+    }
+
+
+def _create_user_session(response: Response, user):
     token = secrets.token_urlsafe(32)
-    with _admin_sessions_lock:
-        _admin_sessions.add(token)
+    with _sessions_lock:
+        _sessions[token] = int(user["id"])
     response.set_cookie(
-        _admin_cookie_name,
+        _session_cookie_name,
         token,
-        max_age=_admin_session_seconds,
+        max_age=_session_seconds,
         httponly=True,
         samesite="lax",
     )
+    if user.get("role") == "admin":
+        response.set_cookie(
+            _admin_cookie_name,
+            token,
+            max_age=_session_seconds,
+            httponly=True,
+            samesite="lax",
+        )
 
 
-def _clear_admin_session(request: Request, response: Response):
-    token = request.cookies.get(_admin_cookie_name)
+def _create_admin_session(response: Response):
+    admin = next(
+        (user for user in db.list_users() if user.get("role") == "admin" and user.get("enabled")),
+        None,
+    )
+    if admin:
+        _create_user_session(response, admin)
+
+
+def _clear_user_session(request: Request, response: Response):
+    token = request.cookies.get(_session_cookie_name) or request.cookies.get(_admin_cookie_name)
     if token:
-        with _admin_sessions_lock:
-            _admin_sessions.discard(token)
+        with _sessions_lock:
+            _sessions.pop(token, None)
+    response.delete_cookie(_session_cookie_name)
     response.delete_cookie(_admin_cookie_name)
 
 
 def _clear_all_admin_sessions():
-    with _admin_sessions_lock:
-        _admin_sessions.clear()
+    with _sessions_lock:
+        _sessions.clear()
+
+
+def _current_user(request: Request):
+    token = request.cookies.get(_session_cookie_name) or request.cookies.get(_admin_cookie_name)
+    if not token:
+        return None
+    with _sessions_lock:
+        user_id = _sessions.get(token)
+    if not user_id:
+        return None
+    user = db.get_user(user_id)
+    if not user or not user.get("enabled"):
+        with _sessions_lock:
+            _sessions.pop(token, None)
+        return None
+    return user
 
 
 def _is_admin_authenticated(request: Request):
-    token = request.cookies.get(_admin_cookie_name)
-    if not token:
-        return False
-    with _admin_sessions_lock:
-        return token in _admin_sessions
+    user = _current_user(request)
+    return bool(user and user.get("role") == "admin")
+
+
+def _auth_status_payload(request: Request):
+    user = _current_user(request)
+    return {
+        "status": "success",
+        "initialized": db.users_initialized(),
+        "authenticated": bool(user),
+        "user": _public_user_payload(user),
+        "is_admin": bool(user and user.get("role") == "admin"),
+    }
 
 
 def _admin_status_payload(request: Request):
+    status = _auth_status_payload(request)
     return {
         "status": "success",
-        "admin_initialized": app_config.has_admin_password(),
-        "admin_authenticated": _is_admin_authenticated(request),
+        "admin_initialized": status["initialized"],
+        "admin_authenticated": status["is_admin"],
+        "authenticated": status["authenticated"],
+        "user": status["user"],
+    }
+
+
+def _require_login(request: Request):
+    user = _current_user(request)
+    if user:
+        return None
+    return {
+        "status": "error",
+        "message": "Authentication required.",
+        "auth_required": True,
     }
 
 
 def _require_admin(request: Request):
-    if app_config.has_admin_password() and _is_admin_authenticated(request):
+    user = _current_user(request)
+    if user and user.get("role") == "admin":
         return None
-    if not app_config.has_admin_password():
-        message = "Admin password is not set."
+    if not db.users_initialized():
+        message = "Initial administrator is not set."
+        setup_required = True
     else:
         message = "Admin authentication required."
-    return {"status": "error", "message": message, "admin_required": True}
+        setup_required = False
+    return {
+        "status": "error",
+        "message": message,
+        "auth_required": user is None,
+        "admin_required": True,
+        "setup_required": setup_required,
+    }
 
 
 def _active_task_count():
@@ -988,8 +1067,61 @@ def sync_source_task(source_record, limit):
 
 
 @app.get("/api/system/status")
-async def system_status():
+async def system_status(request: Request):
+    auth_error = _require_login(request)
+    if auth_error:
+        return auth_error
     return _system_status_payload()
+
+
+@app.get("/api/auth/status")
+async def auth_status(request: Request):
+    return _auth_status_payload(request)
+
+
+@app.post("/api/auth/setup")
+async def auth_setup(response: Response, data: dict = Body(default={})):
+    try:
+        user = db.setup_initial_admin(data.get("username", ""), data.get("password", ""))
+        _create_user_session(response, user)
+        return {
+            "status": "success",
+            "initialized": True,
+            "authenticated": True,
+            "user": _public_user_payload(user),
+            "is_admin": True,
+        }
+    except ValueError as exc:
+        return {"status": "error", "message": str(exc)}
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+
+@app.post("/api/auth/login")
+async def auth_login(response: Response, data: dict = Body(default={})):
+    user = db.verify_user_password(data.get("username", ""), data.get("password", ""))
+    if not user:
+        return {"status": "error", "message": "Invalid username or password."}
+    _create_user_session(response, user)
+    return {
+        "status": "success",
+        "initialized": True,
+        "authenticated": True,
+        "user": _public_user_payload(user),
+        "is_admin": user.get("role") == "admin",
+    }
+
+
+@app.post("/api/auth/logout")
+async def auth_logout(request: Request, response: Response):
+    _clear_user_session(request, response)
+    return {
+        "status": "success",
+        "initialized": db.users_initialized(),
+        "authenticated": False,
+        "user": None,
+        "is_admin": False,
+    }
 
 
 @app.get("/api/admin/status")
@@ -999,16 +1131,15 @@ async def admin_status(request: Request):
 
 @app.post("/api/admin/setup")
 async def admin_setup(response: Response, data: dict = Body(default={})):
-    if app_config.has_admin_password():
-        return {"status": "error", "message": "Admin password is already set."}
     try:
-        password = data.get("password", "")
-        app_config.set_admin_password(password)
-        _create_admin_session(response)
+        username = data.get("username") or "admin"
+        user = db.setup_initial_admin(username, data.get("password", ""))
+        _create_user_session(response, user)
         return {
             "status": "success",
             "admin_initialized": True,
             "admin_authenticated": True,
+            "user": _public_user_payload(user),
         }
     except ValueError as exc:
         return {"status": "error", "message": str(exc)}
@@ -1018,26 +1149,89 @@ async def admin_setup(response: Response, data: dict = Body(default={})):
 
 @app.post("/api/admin/login")
 async def admin_login(response: Response, data: dict = Body(default={})):
-    if not app_config.has_admin_password():
-        return {"status": "error", "message": "Admin password is not set."}
-    if not app_config.verify_admin_password(data.get("password", "")):
+    user = db.verify_user_password(data.get("username", "admin"), data.get("password", ""))
+    if not user or user.get("role") != "admin":
         return {"status": "error", "message": "Invalid admin password."}
-    _create_admin_session(response)
+    _create_user_session(response, user)
     return {
         "status": "success",
         "admin_initialized": True,
         "admin_authenticated": True,
+        "user": _public_user_payload(user),
     }
 
 
 @app.post("/api/admin/logout")
 async def admin_logout(request: Request, response: Response):
-    _clear_admin_session(request, response)
+    _clear_user_session(request, response)
     return {
         "status": "success",
-        "admin_initialized": app_config.has_admin_password(),
+        "admin_initialized": db.users_initialized(),
         "admin_authenticated": False,
     }
+
+
+@app.get("/api/users")
+async def list_users(request: Request):
+    auth_error = _require_admin(request)
+    if auth_error:
+        return auth_error
+    return {"status": "success", "users": db.list_users()}
+
+
+@app.post("/api/users")
+async def create_user(request: Request, data: dict = Body(default={})):
+    auth_error = _require_admin(request)
+    if auth_error:
+        return auth_error
+    try:
+        user = db.create_user(
+            data.get("username", ""),
+            data.get("password", ""),
+            role=data.get("role", "user"),
+            enabled=data.get("enabled", True),
+        )
+        return {"status": "success", "user": user, "users": db.list_users()}
+    except ValueError as exc:
+        return {"status": "error", "message": str(exc)}
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+
+@app.post("/api/users/{user_id}/password")
+async def update_user_password(
+    request: Request,
+    user_id: int,
+    data: dict = Body(default={}),
+):
+    auth_error = _require_admin(request)
+    if auth_error:
+        return auth_error
+    try:
+        user = db.set_user_password(user_id, data.get("password", ""))
+        return {"status": "success", "user": user, "users": db.list_users()}
+    except ValueError as exc:
+        return {"status": "error", "message": str(exc)}
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
+
+
+@app.patch("/api/users/{user_id}")
+async def update_user(request: Request, user_id: int, data: dict = Body(default={})):
+    auth_error = _require_admin(request)
+    if auth_error:
+        return auth_error
+    try:
+        user = db.update_user(
+            user_id,
+            role=data.get("role") if "role" in data else None,
+            enabled=data.get("enabled") if "enabled" in data else None,
+        )
+        return {"status": "success", "user": user, "users": db.list_users()}
+    except ValueError as exc:
+        return {"status": "error", "message": str(exc)}
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
 
 
 @app.post("/api/system/face-quality")
@@ -1079,7 +1273,10 @@ async def update_system_config(request: Request, data: dict = Body(default={})):
 
 
 @app.get("/api/source-adapters")
-async def list_source_adapters():
+async def list_source_adapters(request: Request):
+    auth_error = _require_login(request)
+    if auth_error:
+        return auth_error
     return {
         "status": "success",
         "adapters": source_adapter_registry.list_adapters(),
@@ -1151,7 +1348,7 @@ async def delete_source_adapter(request: Request, adapter_id: str):
 
 @app.post("/api/collect")
 async def collect_video(request: Request, url: str, background_tasks: BackgroundTasks):
-    auth_error = _require_admin(request)
+    auth_error = _require_login(request)
     if auth_error:
         return auth_error
     if _maintenance_active():
@@ -1195,7 +1392,7 @@ async def collect_source(
     background_tasks: BackgroundTasks,
     data: dict = Body(default={}),
 ):
-    auth_error = _require_admin(request)
+    auth_error = _require_login(request)
     if auth_error:
         return auth_error
     if _maintenance_active():
@@ -1267,7 +1464,10 @@ async def collect_source(
 
 
 @app.get("/api/sources")
-async def get_sources():
+async def get_sources(request: Request):
+    auth_error = _require_login(request)
+    if auth_error:
+        return auth_error
     return {"status": "success", "sources": db.list_collection_sources()}
 
 
@@ -1356,7 +1556,7 @@ async def import_post(
     background_tasks: BackgroundTasks,
     data: dict = Body(default={}),
 ):
-    auth_error = _require_admin(request)
+    auth_error = _require_login(request)
     if auth_error:
         return auth_error
     if _maintenance_active():
@@ -1426,7 +1626,10 @@ async def import_post(
 
 
 @app.get("/api/search/text")
-async def search_by_text(q: str):
+async def search_by_text(request: Request, q: str):
+    auth_error = _require_login(request)
+    if auth_error:
+        return auth_error
     query = q.strip()
     if not query:
         return {"status": "success", "results": []}
@@ -1457,7 +1660,10 @@ async def search_by_text(q: str):
 
 
 @app.post("/api/search/image")
-async def search_image(metric: str = "cosine", file: UploadFile = File(...)):
+async def search_image(request: Request, metric: str = "cosine", file: UploadFile = File(...)):
+    auth_error = _require_login(request)
+    if auth_error:
+        return auth_error
     try:
         contents = await file.read()
         nparr = np.frombuffer(contents, np.uint8)
@@ -1561,7 +1767,10 @@ async def rollback_clustering(request: Request):
 
 
 @app.post("/api/cluster/evaluate")
-async def cluster_evaluation(data: dict = Body(default={})):
+async def cluster_evaluation(request: Request, data: dict = Body(default={})):
+    auth_error = _require_login(request)
+    if auth_error:
+        return auth_error
     try:
         defaults = app_config.cluster_defaults()
         eps = float(data.get("eps", defaults["eps"]))
@@ -1586,7 +1795,10 @@ async def cluster_evaluation(data: dict = Body(default={})):
 
 
 @app.get("/api/people")
-async def get_people():
+async def get_people(request: Request):
+    auth_error = _require_login(request)
+    if auth_error:
+        return auth_error
     people = db.get_clustered_people()
     unassigned = [_serialize_face(face) for face in db.get_unassigned_faces()]
     return {
@@ -1599,7 +1811,10 @@ async def get_people():
 
 
 @app.get("/api/person/{person_id}")
-async def get_person_details(person_id: int):
+async def get_person_details(request: Request, person_id: int):
+    auth_error = _require_login(request)
+    if auth_error:
+        return auth_error
     timeline = [_serialize_face(item) for item in db.get_person_timeline(person_id)]
     for item in timeline:
         item["link_url"] = _get_source_link(item)

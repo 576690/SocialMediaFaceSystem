@@ -48,7 +48,11 @@
       box-shadow: inset 3px 0 0 #f59e0b;
     }
 
-    .admin-subnav-item.active,
+    .nav-section[open]>.nav-section-title {
+      background: rgba(255, 255, 255, .1);
+      color: #fff;
+    }
+
     .config-subnav-item.active {
       background: #0f172a;
       border-color: #0f172a;
@@ -63,51 +67,110 @@
 </head>
 
 <body class="min-h-screen">
-  <div id="sidebarBackdrop" onclick="toggleSidebar(false)"
-    class="fixed inset-0 z-30 hidden bg-slate-950/45 lg:hidden"></div>
+  <section id="authScreen" class="flex min-h-screen items-center justify-center px-4 py-8">
+    <div class="glass w-full max-w-xl rounded-3xl p-6 shadow-2xl">
+      <p class="ui text-xs uppercase tracking-[0.25em] text-teal-700">Face System</p>
+      <h1 id="authTitle" class="ui mt-3 text-3xl font-bold">用户登录</h1>
+      <p id="authHint" class="mt-2 text-sm text-slate-500">请输入管理员分配的账号和密码。</p>
+      <div class="mt-6 space-y-3">
+        <input id="authUsername" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none"
+          placeholder="用户名" autocomplete="username">
+        <input id="authPassword" type="password"
+          class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none" placeholder="密码"
+          autocomplete="current-password" onkeydown="if(event.key==='Enter'){submitAuth();}">
+        <input id="authPasswordConfirm" type="password"
+          class="hidden w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none"
+          placeholder="再次输入密码" autocomplete="new-password" onkeydown="if(event.key==='Enter'){submitAuth();}">
+        <button id="btnAuthSubmit" onclick="submitAuth()" class="w-full rounded-2xl bg-slate-950 px-4 py-3 text-white">
+          登录
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <div id="appShell" class="hidden">
+  <div id="sidebarBackdrop" onclick="toggleSidebar(false)" class="fixed inset-0 z-30 hidden bg-slate-950/45 lg:hidden">
+  </div>
 
   <aside id="sidebar"
-    class="fixed inset-y-0 left-0 z-40 w-72 -translate-x-full bg-[var(--nav)] px-4 py-5 text-white shadow-2xl transition-transform duration-200 lg:translate-x-0">
+    class="fixed inset-y-0 left-0 z-40 w-72 -translate-x-full overflow-y-auto bg-[var(--nav)] px-4 py-5 pb-8 text-white shadow-2xl transition-transform duration-200 lg:translate-x-0">
     <div class="rounded-3xl bg-white/10 px-4 py-4">
       <p class="ui text-xs uppercase tracking-[0.25em] text-teal-100">Face System</p>
       <h1 class="ui mt-3 text-2xl font-bold leading-tight">社交媒体人脸数据采集与智能检索系统</h1>
       <p id="adminStatusText" class="mt-4 rounded-full bg-white/10 px-3 py-2 text-xs text-teal-50">管理员状态加载中</p>
     </div>
     <nav class="mt-6 space-y-2">
-      <button data-view="text" onclick="switchView('text')"
-        class="nav-item active flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
-        <span>以文搜图</span><span>Text</span>
-      </button>
-      <button data-view="image" onclick="switchView('image')"
-        class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
-        <span>以图搜图</span><span>Image</span>
-      </button>
-      <button data-view="people" onclick="switchView('people')"
-        class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
-        <span>人物库</span><span>People</span>
-      </button>
-      <button data-view="admin" onclick="switchView('admin')"
-        class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
-        <span>系统管理</span><span>Admin</span>
-      </button>
+      <details class="nav-section" open>
+        <summary class="nav-section-title cursor-pointer rounded-2xl px-4 py-3 text-sm text-white/80">数据采集</summary>
+        <div class="mt-2 space-y-1 pl-3">
+          <button data-view="admin" data-admin-target="manual" onclick="switchView('admin'); switchAdminSubView('manual')"
+            class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
+            <span>手动导入</span><span>Import</span>
+          </button>
+          <button data-view="admin" data-admin-target="sources" onclick="switchView('admin'); switchAdminSubView('sources')"
+            class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
+            <span>添加账号监测</span><span>Monitor</span>
+          </button>
+        </div>
+      </details>
+      <details class="nav-section" open>
+        <summary class="nav-section-title cursor-pointer rounded-2xl px-4 py-3 text-sm text-white/80">智能检索</summary>
+        <div class="mt-2 space-y-1 pl-3">
+          <button data-view="text" onclick="switchView('text')"
+            class="nav-item active flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
+            <span>以文搜图</span><span>Text</span>
+          </button>
+          <button data-view="image" onclick="switchView('image')"
+            class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
+            <span>以图搜图</span><span>Image</span>
+          </button>
+        </div>
+      </details>
+      <details class="nav-section">
+        <summary class="nav-section-title cursor-pointer rounded-2xl px-4 py-3 text-sm text-white/80">人物库</summary>
+        <div class="mt-2 space-y-1 pl-3">
+          <button data-view="people" onclick="switchView('people')"
+            class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
+            <span>人物库</span><span>People</span>
+          </button>
+        </div>
+      </details>
+      <details id="systemNavGroup" class="nav-section hidden">
+        <summary class="nav-section-title cursor-pointer rounded-2xl px-4 py-3 text-sm text-white/80">系统管理</summary>
+        <div class="mt-2 space-y-1 pl-3">
+          <button data-view="admin" data-admin-target="config" onclick="switchView('admin'); switchAdminSubView('config')"
+            class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
+            <span>核心参数</span><span>Config</span>
+          </button>
+          <button data-view="admin" data-admin-target="users" onclick="switchView('admin'); switchAdminSubView('users')"
+            class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
+            <span>账户管理</span><span>Users</span>
+          </button>
+          <button data-view="admin" data-admin-target="reset" onclick="switchView('admin'); switchAdminSubView('reset')"
+            class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
+            <span>系统重置</span><span>Reset</span>
+          </button>
+        </div>
+      </details>
     </nav>
-    <div class="absolute bottom-5 left-4 right-4 rounded-3xl bg-white/10 p-4 text-xs leading-6 text-teal-50">
-      普通用户可检索和查看人物库；采集、参数、聚类整理和重置系统需要管理员登录。
-    </div>
   </aside>
 
   <div class="min-h-screen lg:pl-72">
     <header class="sticky top-0 z-20 border-b border-white/60 bg-white/70 px-4 py-4 backdrop-blur lg:px-8">
       <div class="flex items-center justify-between gap-4">
         <div class="flex items-center gap-3">
-          <button onclick="toggleSidebar(true)" class="rounded-2xl bg-slate-950 px-3 py-2 text-sm text-white lg:hidden">菜单</button>
+          <button onclick="toggleSidebar(true)"
+            class="rounded-2xl bg-slate-950 px-3 py-2 text-sm text-white lg:hidden">菜单</button>
           <div>
             <p id="viewKicker" class="ui text-xs uppercase tracking-[0.25em] text-teal-700">Text Search</p>
             <h2 id="viewTitle" class="ui text-2xl font-bold">以文搜图</h2>
           </div>
         </div>
-        <button id="btnLogout" onclick="logoutAdmin()"
-          class="hidden rounded-2xl bg-slate-950 px-4 py-2 text-sm text-white">退出管理员</button>
+        <div class="flex items-center gap-3">
+          <span id="currentUserText" class="hidden text-sm text-slate-500"></span>
+          <button id="btnLogout" onclick="logoutAdmin()"
+            class="hidden rounded-2xl bg-slate-950 px-4 py-2 text-sm text-white">退出登录</button>
+        </div>
       </div>
     </header>
 
@@ -117,7 +180,7 @@
           <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
               <h2 class="ui text-2xl font-bold">以文搜图</h2>
-              <p class="mt-2 text-sm text-slate-500">输入人物、事件、场景或语义描述，检索融合后的视觉、语音/字幕和正文信息。</p>
+              <p class="mt-2 text-sm text-slate-500">输入人物、事件、场景的描述，检索融合后的视觉、语音/字幕和正文信息。</p>
             </div>
             <div id="textResultCount" class="text-sm text-slate-500">0 条结果</div>
           </div>
@@ -131,7 +194,8 @@
         <div class="glass rounded-3xl p-6">
           <div class="flex items-center justify-between">
             <h3 class="ui text-xl font-bold">搜索结果</h3>
-            <button onclick="renderResults([], 'textResults', 'textResultCount')" class="text-sm text-slate-500">清空</button>
+            <button onclick="renderResults([], 'textResults', 'textResultCount')"
+              class="text-sm text-slate-500">清空</button>
           </div>
           <div id="textResults" class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"></div>
         </div>
@@ -160,7 +224,8 @@
         <div class="glass rounded-3xl p-6">
           <div class="flex items-center justify-between">
             <h3 class="ui text-xl font-bold">搜索结果</h3>
-            <button onclick="renderResults([], 'imageResults', 'imageResultCount')" class="text-sm text-slate-500">清空</button>
+            <button onclick="renderResults([], 'imageResults', 'imageResultCount')"
+              class="text-sm text-slate-500">清空</button>
           </div>
           <div id="imageResults" class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"></div>
         </div>
@@ -192,27 +257,6 @@
         <div id="adminGate" class="glass rounded-3xl p-6"></div>
 
         <div id="adminPanel" class="hidden space-y-6">
-          <div class="glass rounded-3xl p-3">
-            <div class="flex gap-2 overflow-x-auto pb-1">
-              <button type="button" data-admin-subview-tab="manual" onclick="switchAdminSubView('manual')"
-                class="admin-subnav-item active shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600">
-                手动导入
-              </button>
-              <button type="button" data-admin-subview-tab="sources" onclick="switchAdminSubView('sources')"
-                class="admin-subnav-item shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600">
-                账号监测
-              </button>
-              <button type="button" data-admin-subview-tab="config" onclick="switchAdminSubView('config')"
-                class="admin-subnav-item shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600">
-                核心参数
-              </button>
-              <button type="button" data-admin-subview-tab="reset" onclick="switchAdminSubView('reset')"
-                class="admin-subnav-item shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600">
-                重置系统
-              </button>
-            </div>
-          </div>
-
           <div data-admin-subview="manual" class="admin-subview grid gap-6 xl:grid-cols-2">
             <div class="glass rounded-3xl p-6">
               <h2 class="ui text-xl font-bold">单链接采集</h2>
@@ -270,7 +314,7 @@
               <p class="mt-2 text-sm text-slate-500">管理已登记的采集源，可仅删除登记，也可连同关联数据清理。</p>
               <div id="sourceList" class="mt-5 grid gap-4"></div>
 
-              <div class="mt-6 rounded-3xl bg-white/70 p-4">
+              <div data-admin-only="true" class="mt-6 rounded-3xl bg-white/70 p-4">
                 <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                   <div>
                     <h3 class="ui font-bold">来源适配器</h3>
@@ -300,7 +344,8 @@
               <div class="mt-5 space-y-4">
                 <div class="rounded-3xl bg-white/70 p-3">
                   <div class="flex gap-2 overflow-x-auto pb-1">
-                    <button type="button" data-config-subview-tab="collection" onclick="switchConfigSubView('collection')"
+                    <button type="button" data-config-subview-tab="collection"
+                      onclick="switchConfigSubView('collection')"
                       class="config-subnav-item active shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600">
                       采集参数
                     </button>
@@ -338,7 +383,8 @@
                       <input id="configWeiboLimit" type="number" min="1" max="100"
                         class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
                     </label>
-                    <label class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">
+                    <label
+                      class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">
                       启用微博 Cookie
                       <input id="configWeiboCookieEnabled" type="checkbox" class="h-4 w-4">
                     </label>
@@ -366,20 +412,26 @@
                         </label>
                       </div>
                       <div class="mt-3 grid gap-3 sm:grid-cols-2">
-                        <label class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">启用 Cookie
+                        <label
+                          class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">启用
+                          Cookie
                           <input id="configPlatformWeiboAuth" type="checkbox" class="h-4 w-4">
                         </label>
                         <label class="text-sm text-slate-600">同步数量
-                          <input id="configPlatformWeiboLimit" type="number" min="1" max="100" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          <input id="configPlatformWeiboLimit" type="number" min="1" max="100"
+                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
                         </label>
                         <label class="text-sm text-slate-600">同步间隔分钟
-                          <input id="configPlatformWeiboInterval" type="number" min="0" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          <input id="configPlatformWeiboInterval" type="number" min="0"
+                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
                         </label>
                         <label class="text-sm text-slate-600">超时秒
-                          <input id="configPlatformWeiboTimeout" type="number" min="5" max="120" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          <input id="configPlatformWeiboTimeout" type="number" min="5" max="120"
+                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
                         </label>
                         <label class="text-sm text-slate-600">重试次数
-                          <input id="configPlatformWeiboRetry" type="number" min="1" max="10" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          <input id="configPlatformWeiboRetry" type="number" min="1" max="10"
+                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
                         </label>
                       </div>
                     </section>
@@ -391,26 +443,34 @@
                         </label>
                       </div>
                       <div class="mt-3 grid gap-3 sm:grid-cols-2">
-                        <label class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">启用 Cookie
+                        <label
+                          class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">启用
+                          Cookie
                           <input id="configPlatformBilibiliAuth" type="checkbox" class="h-4 w-4">
                         </label>
                         <label class="text-sm text-slate-600">同步数量
-                          <input id="configPlatformBilibiliLimit" type="number" min="1" max="100" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          <input id="configPlatformBilibiliLimit" type="number" min="1" max="100"
+                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
                         </label>
                         <label class="text-sm text-slate-600">同步间隔分钟
-                          <input id="configPlatformBilibiliInterval" type="number" min="0" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          <input id="configPlatformBilibiliInterval" type="number" min="0"
+                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
                         </label>
                         <label class="text-sm text-slate-600">超时秒
-                          <input id="configPlatformBilibiliTimeout" type="number" min="5" max="120" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          <input id="configPlatformBilibiliTimeout" type="number" min="5" max="120"
+                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
                         </label>
                         <label class="text-sm text-slate-600">重试次数
-                          <input id="configPlatformBilibiliRetry" type="number" min="1" max="10" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          <input id="configPlatformBilibiliRetry" type="number" min="1" max="10"
+                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
                         </label>
                         <label class="text-sm text-slate-600">Impersonate
-                          <input id="configPlatformBilibiliImpersonate" type="text" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          <input id="configPlatformBilibiliImpersonate" type="text"
+                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
                         </label>
                         <label class="text-sm text-slate-600 sm:col-span-2">Referer
-                          <input id="configPlatformBilibiliReferer" type="text" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          <input id="configPlatformBilibiliReferer" type="text"
+                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
                         </label>
                       </div>
                     </section>
@@ -422,20 +482,26 @@
                         </label>
                       </div>
                       <div class="mt-3 grid gap-3 sm:grid-cols-2">
-                        <label class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">启用 Cookie
+                        <label
+                          class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">启用
+                          Cookie
                           <input id="configPlatformYoutubeAuth" type="checkbox" class="h-4 w-4">
                         </label>
                         <label class="text-sm text-slate-600">同步数量
-                          <input id="configPlatformYoutubeLimit" type="number" min="1" max="100" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          <input id="configPlatformYoutubeLimit" type="number" min="1" max="100"
+                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
                         </label>
                         <label class="text-sm text-slate-600">同步间隔分钟
-                          <input id="configPlatformYoutubeInterval" type="number" min="0" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          <input id="configPlatformYoutubeInterval" type="number" min="0"
+                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
                         </label>
                         <label class="text-sm text-slate-600">超时秒
-                          <input id="configPlatformYoutubeTimeout" type="number" min="5" max="120" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          <input id="configPlatformYoutubeTimeout" type="number" min="5" max="120"
+                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
                         </label>
                         <label class="text-sm text-slate-600">重试次数
-                          <input id="configPlatformYoutubeRetry" type="number" min="1" max="10" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          <input id="configPlatformYoutubeRetry" type="number" min="1" max="10"
+                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
                         </label>
                       </div>
                     </section>
@@ -447,20 +513,25 @@
                         </label>
                       </div>
                       <div class="mt-3 grid gap-3 sm:grid-cols-2">
-                        <label class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">启用认证令牌
+                        <label
+                          class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">启用认证令牌
                           <input id="configPlatformXAuth" type="checkbox" class="h-4 w-4">
                         </label>
                         <label class="text-sm text-slate-600">同步数量
-                          <input id="configPlatformXLimit" type="number" min="1" max="100" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          <input id="configPlatformXLimit" type="number" min="1" max="100"
+                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
                         </label>
                         <label class="text-sm text-slate-600">同步间隔分钟
-                          <input id="configPlatformXInterval" type="number" min="0" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          <input id="configPlatformXInterval" type="number" min="0"
+                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
                         </label>
                         <label class="text-sm text-slate-600">超时秒
-                          <input id="configPlatformXTimeout" type="number" min="5" max="120" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          <input id="configPlatformXTimeout" type="number" min="5" max="120"
+                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
                         </label>
                         <label class="text-sm text-slate-600">重试次数
-                          <input id="configPlatformXRetry" type="number" min="1" max="10" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          <input id="configPlatformXRetry" type="number" min="1" max="10"
+                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
                         </label>
                       </div>
                     </section>
@@ -473,16 +544,20 @@
                       </div>
                       <div class="mt-3 grid gap-3 sm:grid-cols-4">
                         <label class="text-sm text-slate-600">同步数量
-                          <input id="configPlatformGenericLimit" type="number" min="1" max="100" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          <input id="configPlatformGenericLimit" type="number" min="1" max="100"
+                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
                         </label>
                         <label class="text-sm text-slate-600">同步间隔分钟
-                          <input id="configPlatformGenericInterval" type="number" min="0" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          <input id="configPlatformGenericInterval" type="number" min="0"
+                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
                         </label>
                         <label class="text-sm text-slate-600">超时秒
-                          <input id="configPlatformGenericTimeout" type="number" min="5" max="120" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          <input id="configPlatformGenericTimeout" type="number" min="5" max="120"
+                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
                         </label>
                         <label class="text-sm text-slate-600">重试次数
-                          <input id="configPlatformGenericRetry" type="number" min="1" max="10" class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          <input id="configPlatformGenericRetry" type="number" min="1" max="10"
+                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
                         </label>
                       </div>
                     </section>
@@ -515,23 +590,27 @@
                   <h3 class="ui font-bold">Prompt 配置</h3>
                   <div class="mt-3 grid gap-3 md:grid-cols-3">
                     <label class="text-sm text-slate-600">语义文档风格
-                      <select id="configSemanticCorpusStyle" class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2">
+                      <select id="configSemanticCorpusStyle"
+                        class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2">
                         <option value="structured_zh">structured_zh</option>
                       </select>
                     </label>
                     <label class="text-sm text-slate-600">Caption 风格
-                      <select id="configCaptionStyle" class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2">
+                      <select id="configCaptionStyle"
+                        class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2">
                         <option value="retrieval_keywords">retrieval_keywords</option>
                         <option value="detailed_caption">detailed_caption</option>
                       </select>
                     </label>
                     <label class="text-sm text-slate-600">Caption 语言
-                      <select id="configCaptionLanguage" class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2">
+                      <select id="configCaptionLanguage"
+                        class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2">
                         <option value="zh">zh</option>
                         <option value="en">en</option>
                       </select>
                     </label>
-                    <label class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">
+                    <label
+                      class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">
                       启用 OCR 线索
                       <input id="configCaptionIncludeOcrHint" type="checkbox" class="h-4 w-4">
                     </label>
@@ -582,7 +661,8 @@
                 <div data-config-subview="face" class="config-subview hidden rounded-3xl bg-white/70 p-4">
                   <h3 class="ui font-bold">人脸过滤参数</h3>
                   <div class="mt-3 grid gap-3 md:grid-cols-3">
-                    <label class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">
+                    <label
+                      class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">
                       启用过滤
                       <input id="faceQualityEnabled" type="checkbox" class="h-4 w-4">
                     </label>
@@ -612,12 +692,40 @@
             </div>
           </div>
 
+          <div data-admin-subview="users" class="admin-subview hidden">
+            <div class="glass rounded-3xl p-6">
+              <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h2 class="ui text-xl font-bold">账户管理</h2>
+                  <p class="mt-2 text-sm text-slate-500">管理员可新增用户、重置密码、切换角色和启用状态。</p>
+                </div>
+              </div>
+              <div class="mt-5 grid gap-3 lg:grid-cols-[1fr_1fr_160px_120px_120px]">
+                <input id="newUserUsername" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none"
+                  placeholder="用户名">
+                <input id="newUserPassword" type="password"
+                  class="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none" placeholder="初始密码">
+                <select id="newUserRole" class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                  <option value="user">普通用户</option>
+                  <option value="admin">管理员</option>
+                </select>
+                <label class="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm">
+                  启用 <input id="newUserEnabled" type="checkbox" class="h-4 w-4" checked>
+                </label>
+                <button id="btnCreateUser" onclick="createUser()"
+                  class="rounded-2xl bg-slate-950 px-4 py-3 text-white">添加用户</button>
+              </div>
+              <div id="userList" class="mt-5 grid gap-3"></div>
+            </div>
+          </div>
+
           <div data-admin-subview="reset" class="admin-subview hidden">
             <div class="glass rounded-3xl border border-red-200 p-6">
               <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
                   <h2 class="ui text-xl font-bold text-red-700">危险操作</h2>
-                  <p class="mt-2 text-sm text-slate-500">重置会清空数据库、索引、派生文件和系统配置；默认保留 `storage/videos`、微博与 YouTube cookie 文件。</p>
+                  <p class="mt-2 text-sm text-slate-500">重置会清空数据库、索引、派生文件和系统配置；默认保留 `storage/videos`、微博与 YouTube cookie
+                    文件。</p>
                 </div>
                 <button id="btnResetSystem" onclick="openResetSystemModal()"
                   class="rounded-2xl bg-red-700 px-5 py-3 text-white">重置系统</button>
@@ -627,6 +735,7 @@
         </div>
       </section>
     </main>
+  </div>
   </div>
 
   <div id="clusterModeModal"
@@ -706,23 +815,27 @@
               <div class="rounded-2xl bg-white/70 p-4">
                 <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Semantic</p>
                 <p id="modalSemantic"
-                  class="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-sm leading-7 text-slate-700"></p>
+                  class="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-sm leading-7 text-slate-700">
+                </p>
               </div>
               <div class="grid gap-3">
                 <div class="rounded-2xl bg-white/70 p-4">
                   <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Visual</p>
                   <p id="modalVisual"
-                    class="mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-sm leading-6 text-slate-700"></p>
+                    class="mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
+                  </p>
                 </div>
                 <div class="rounded-2xl bg-white/70 p-4">
                   <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Speech</p>
                   <p id="modalSpeech"
-                    class="mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-sm leading-6 text-slate-700"></p>
+                    class="mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
+                  </p>
                 </div>
                 <div class="rounded-2xl bg-white/70 p-4">
                   <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Post</p>
                   <p id="modalPost"
-                    class="mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-sm leading-6 text-slate-700"></p>
+                    class="mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
+                  </p>
                 </div>
               </div>
               <div class="rounded-2xl bg-white/70 p-4 text-sm text-slate-600">
@@ -769,10 +882,12 @@
       timelineItems: [],
       hasClusterSnapshot: false,
       dangerAction: null,
+      users: [],
       sourceAdapters: [],
       sourcePlatformOptions: [],
       adminSubView: "manual",
       configSubView: "collection",
+      auth: { initialized: false, authenticated: false, user: null },
       admin: { initialized: false, authenticated: false }
     };
 
@@ -830,12 +945,16 @@
       state.currentView = view;
       document.querySelectorAll(".view").forEach(el => el.classList.add("hidden"));
       document.getElementById(`view-${view}`).classList.remove("hidden");
-      document.querySelectorAll(".nav-item").forEach(b => b.classList.toggle("active", b.dataset.view === view));
+      document.querySelectorAll(".nav-item").forEach(b => {
+        const target = b.dataset.adminTarget;
+        const active = target ? view === "admin" && state.adminSubView === target : b.dataset.view === view;
+        b.classList.toggle("active", active);
+      });
       const meta = {
         text: ["Text Search", "以文搜图"],
         image: ["Image Search", "以图搜图"],
         people: ["People Library", "人物库"],
-        admin: ["Admin Console", "系统管理"]
+        admin: ["Data Console", state.adminSubView === "sources" ? "添加账号监测" : state.adminSubView === "manual" ? "手动导入" : "系统管理"]
       }[view];
       document.getElementById("viewKicker").textContent = meta[0];
       document.getElementById("viewTitle").textContent = meta[1];
@@ -849,13 +968,21 @@
 
     function switchAdminSubView(subView) {
       state.adminSubView = subView || "manual";
+      if (!state.admin.authenticated && !["manual", "sources"].includes(state.adminSubView)) {
+        state.adminSubView = "manual";
+      }
       document.querySelectorAll("[data-admin-subview]").forEach(el => {
         el.classList.toggle("hidden", el.dataset.adminSubview !== state.adminSubView);
       });
-      document.querySelectorAll("[data-admin-subview-tab]").forEach(tab => {
-        tab.classList.toggle("active", tab.dataset.adminSubviewTab === state.adminSubView);
+      document.querySelectorAll(".nav-item").forEach(b => {
+        const target = b.dataset.adminTarget;
+        if (target) b.classList.toggle("active", state.currentView === "admin" && state.adminSubView === target);
       });
       if (state.adminSubView === "config") switchConfigSubView("collection");
+      if (state.adminSubView === "users") loadUsers();
+      if (state.currentView === "admin") {
+        document.getElementById("viewTitle").textContent = state.adminSubView === "sources" ? "添加账号监测" : state.adminSubView === "manual" ? "手动导入" : "系统管理";
+      }
     }
 
     function switchConfigSubView(subView) {
@@ -881,6 +1008,11 @@
 
     function handleApiError(d, fallback) {
       if (d && d.status === "success") return false;
+      if (d && d.auth_required) {
+        showToast(d.message || "请先登录。", "error");
+        loadAdminStatus();
+        return true;
+      }
       if (d && d.admin_required) {
         showToast(d.message || "需要管理员登录。", "error");
         loadAdminStatus();
@@ -891,89 +1023,98 @@
     }
 
     async function loadAdminStatus() {
-      const d = await fetchJson("/api/admin/status");
-      state.admin.initialized = Boolean(d.admin_initialized);
-      state.admin.authenticated = Boolean(d.admin_authenticated);
+      const d = await fetchJson("/api/auth/status");
+      state.auth.initialized = Boolean(d.initialized);
+      state.auth.authenticated = Boolean(d.authenticated);
+      state.auth.user = d.user || null;
+      state.admin.initialized = state.auth.initialized;
+      state.admin.authenticated = Boolean(d.is_admin);
       renderAdminState();
     }
 
     function renderAdminState() {
-      const text = state.admin.authenticated
-        ? "管理员已登录"
-        : state.admin.initialized
-          ? "管理员未登录"
-          : "首次进入需设置管理员密码";
-      document.getElementById("adminStatusText").textContent = text;
-      document.getElementById("btnLogout").classList.toggle("hidden", !state.admin.authenticated);
-      document.getElementById("peopleModeHint").textContent = state.admin.authenticated
+      const user = state.auth.user;
+      const isLoggedIn = Boolean(state.auth.authenticated);
+      const isAdmin = Boolean(state.admin.authenticated);
+      document.getElementById("authScreen").classList.toggle("hidden", isLoggedIn);
+      document.getElementById("authScreen").classList.toggle("flex", !isLoggedIn);
+      document.getElementById("appShell").classList.toggle("hidden", !isLoggedIn);
+      document.getElementById("authPasswordConfirm").classList.toggle("hidden", state.auth.initialized);
+      document.getElementById("authTitle").textContent = state.auth.initialized ? "用户登录" : "创建首个管理员账户";
+      document.getElementById("authHint").textContent = state.auth.initialized ? "请输入管理员分配的账号和密码。" : "首次进入系统，请创建首个管理员用户名和密码。";
+      document.getElementById("btnAuthSubmit").textContent = state.auth.initialized ? "登录" : "创建并进入";
+
+      document.getElementById("systemNavGroup").classList.toggle("hidden", !isAdmin);
+      document.querySelectorAll("[data-admin-only='true']").forEach(el => el.classList.toggle("hidden", !isAdmin));
+      document.getElementById("adminStatusText").textContent = isLoggedIn
+        ? `${user.username} / ${isAdmin ? "管理员" : "普通用户"}`
+        : state.auth.initialized ? "未登录" : "首次进入需创建管理员";
+      document.getElementById("btnLogout").classList.toggle("hidden", !isLoggedIn);
+      const currentUser = document.getElementById("currentUserText");
+      currentUser.classList.toggle("hidden", !isLoggedIn);
+      currentUser.textContent = isLoggedIn ? `${user.username}（${isAdmin ? "管理员" : "普通用户"}）` : "";
+      document.getElementById("peopleModeHint").textContent = isAdmin
         ? "管理员模式：可重命名、拖拽归类和合并人物。"
-        : "普通用户模式：可查看人物和时间线，编辑操作需要管理员登录。";
-      document.getElementById("unassignedHint").textContent = state.admin.authenticated
+        : "普通用户模式：可查看人物和时间线，编辑操作需要管理员权限。";
+      document.getElementById("unassignedHint").textContent = isAdmin
         ? "拖拽到上方人物卡片完成归类"
         : "管理员登录后可拖拽到人物卡片完成归类";
 
       const gate = document.getElementById("adminGate");
       const panel = document.getElementById("adminPanel");
-      if (!state.admin.initialized) {
+      if (!isLoggedIn) {
         panel.classList.add("hidden");
-        gate.classList.remove("hidden");
-        gate.innerHTML = `<h2 class="ui text-2xl font-bold">首次设置管理员密码</h2><p class="mt-2 text-sm text-slate-500">设置后才能进入系统管理并执行采集、参数修改和危险操作。</p><div class="mt-5 grid gap-3 md:grid-cols-[1fr_1fr_160px]"><input id="adminSetupPassword" type="password" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none" placeholder="输入管理员密码，至少 6 位"><input id="adminSetupConfirm" type="password" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none" placeholder="再次输入密码"><button id="btnAdminSetup" onclick="setupAdmin()" class="rounded-2xl bg-slate-950 px-4 py-3 text-white">设置并进入</button></div>`;
-        return;
-      }
-      if (!state.admin.authenticated) {
-        panel.classList.add("hidden");
-        gate.classList.remove("hidden");
-        gate.innerHTML = `<h2 class="ui text-2xl font-bold">管理员登录</h2><p class="mt-2 text-sm text-slate-500">输入管理员密码后进入采集、配置和维护功能。</p><div class="mt-5 grid gap-3 md:grid-cols-[1fr_160px]"><input id="adminLoginPassword" type="password" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none" placeholder="管理员密码" onkeydown="if(event.key==='Enter'){loginAdmin();}"><button id="btnAdminLogin" onclick="loginAdmin()" class="rounded-2xl bg-slate-950 px-4 py-3 text-white">登录</button></div>`;
+        gate.classList.add("hidden");
         return;
       }
       gate.classList.add("hidden");
       panel.classList.remove("hidden");
+      if (!isAdmin && !["manual", "sources"].includes(state.adminSubView)) state.adminSubView = "manual";
       switchAdminSubView(state.adminSubView || "manual");
     }
 
-    async function setupAdmin() {
-      const password = document.getElementById("adminSetupPassword").value;
-      const confirm = document.getElementById("adminSetupConfirm").value;
-      if (password !== confirm) return showToast("两次输入的密码不一致。", "error");
-      setLoading("btnAdminSetup", true, "设置中...");
-      try {
-        const d = await fetchJson("/api/admin/setup", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ password })
-        });
-        if (handleApiError(d, "管理员密码设置失败。")) return;
-        await loadAdminStatus();
-        await loadSystemStatus();
-        showToast("管理员密码已设置。", "success");
-      } finally {
-        setLoading("btnAdminSetup", false);
+    async function submitAuth() {
+      const username = document.getElementById("authUsername").value.trim();
+      const password = document.getElementById("authPassword").value;
+      if (!username || !password) return showToast("请输入用户名和密码。", "error");
+      const setupMode = !state.auth.initialized;
+      if (setupMode && password !== document.getElementById("authPasswordConfirm").value) {
+        return showToast("两次输入的密码不一致。", "error");
       }
-    }
-
-    async function loginAdmin() {
-      setLoading("btnAdminLogin", true, "登录中...");
+      setLoading("btnAuthSubmit", true, setupMode ? "创建中..." : "登录中...");
       try {
-        const d = await fetchJson("/api/admin/login", {
+        const d = await fetchJson(setupMode ? "/api/auth/setup" : "/api/auth/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ password: document.getElementById("adminLoginPassword").value })
+          body: JSON.stringify({ username, password })
         });
-        if (handleApiError(d, "管理员登录失败。")) return;
+        if (handleApiError(d, setupMode ? "管理员账户创建失败。" : "登录失败。")) return;
         await loadAdminStatus();
         await loadSystemStatus();
         await loadPeople();
-        showToast("管理员已登录。", "success");
+        showToast(setupMode ? "管理员账户已创建。" : "登录成功。", "success");
       } finally {
-        setLoading("btnAdminLogin", false);
+        setLoading("btnAuthSubmit", false);
       }
     }
 
+    async function setupAdmin() {
+      await submitAuth();
+    }
+
+    async function loginAdmin() {
+      await submitAuth();
+    }
+
     async function logoutAdmin() {
-      await fetchJson("/api/admin/logout", { method: "POST" });
+      await fetchJson("/api/auth/logout", { method: "POST" });
+      state.auth.authenticated = false;
+      state.auth.user = null;
+      state.admin.authenticated = false;
+      renderResults([], "textResults", "textResultCount");
+      renderResults([], "imageResults", "imageResultCount");
       await loadAdminStatus();
-      await loadPeople();
-      showToast("已退出管理员。", "success");
+      showToast("已退出登录。", "success");
     }
 
     function updateClusterSnapshotState(hasSnapshot) {
@@ -1062,6 +1203,82 @@
       const d = await fetchJson("/api/source-adapters");
       if (d.status !== "success") return;
       renderSourceAdapters(d.adapters || [], d.platform_options || []);
+    }
+
+    function renderUsers(users) {
+      state.users = users || [];
+      const c = document.getElementById("userList");
+      if (!c) return;
+      if (!state.users.length) {
+        c.innerHTML = `<div class="rounded-2xl bg-white/70 p-4 text-sm text-slate-500">暂无用户。</div>`;
+        return;
+      }
+      c.innerHTML = "";
+      state.users.forEach(user => {
+        const d = document.createElement("div");
+        d.className = "grid gap-3 rounded-3xl bg-white/70 p-4 md:grid-cols-[1fr_140px_120px_1fr_120px]";
+        d.innerHTML = `<div><p class="font-semibold">${safeText(user.username)}</p><p class="text-xs text-slate-400">ID ${user.id}</p></div><select class="user-role rounded-xl border border-slate-200 bg-white px-3 py-2"><option value="user">普通用户</option><option value="admin">管理员</option></select><label class="flex items-center gap-2 text-sm text-slate-600"><input class="user-enabled h-4 w-4" type="checkbox"> 启用</label><input class="user-password rounded-xl border border-slate-200 bg-white px-3 py-2" type="password" placeholder="新密码，留空不改"><button class="user-save rounded-2xl bg-slate-950 px-4 py-2 text-sm text-white">保存</button>`;
+        d.querySelector(".user-role").value = user.role || "user";
+        d.querySelector(".user-enabled").checked = Boolean(user.enabled);
+        d.querySelector(".user-save").addEventListener("click", () => saveUser(user.id, d));
+        c.appendChild(d);
+      });
+    }
+
+    async function loadUsers() {
+      if (!state.admin.authenticated) return;
+      const d = await fetchJson("/api/users");
+      if (handleApiError(d, "账户列表加载失败。")) return;
+      renderUsers(d.users || []);
+    }
+
+    async function createUser() {
+      const payload = {
+        username: document.getElementById("newUserUsername").value.trim(),
+        password: document.getElementById("newUserPassword").value,
+        role: document.getElementById("newUserRole").value,
+        enabled: document.getElementById("newUserEnabled").checked
+      };
+      if (!payload.username || !payload.password) return showToast("请输入用户名和初始密码。", "error");
+      setLoading("btnCreateUser", true, "添加中...");
+      try {
+        const d = await fetchJson("/api/users", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        if (handleApiError(d, "添加用户失败。")) return;
+        document.getElementById("newUserUsername").value = "";
+        document.getElementById("newUserPassword").value = "";
+        renderUsers(d.users || []);
+        showToast("用户已添加。", "success");
+      } finally {
+        setLoading("btnCreateUser", false);
+      }
+    }
+
+    async function saveUser(userId, row) {
+      const role = row.querySelector(".user-role").value;
+      const enabled = row.querySelector(".user-enabled").checked;
+      const password = row.querySelector(".user-password").value;
+      const d = await fetchJson(`/api/users/${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role, enabled })
+      });
+      if (handleApiError(d, "保存用户失败。")) return;
+      if (password) {
+        const p = await fetchJson(`/api/users/${userId}/password`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password })
+        });
+        if (handleApiError(p, "修改密码失败。")) return;
+        renderUsers(p.users || []);
+      } else {
+        renderUsers(d.users || []);
+      }
+      showToast("用户已保存。", "success");
     }
 
     async function uploadSourceAdapterConfig() {
@@ -1405,8 +1622,10 @@
           : "";
         const d = document.createElement("div");
         d.className = "rounded-3xl bg-white/70 p-4";
-        d.innerHTML = `<div class="flex items-start justify-between gap-3"><div class="min-w-0"><p class="ui text-lg font-bold">${safeText(s.title, s.platform)}</p><p class="mt-1 break-all text-sm text-slate-500">${safeText(s.source_url)}</p></div><span class="rounded-full bg-slate-100 px-3 py-1 text-xs">${safeText(s.source_type)}</span></div>${keywords ? `<p class="mt-3 text-xs text-slate-500">关键词：${keywords}</p>` : ""}${statsLine ? `<p class="mt-2 text-xs text-slate-500">${statsLine}</p>` : ""}<p class="mt-3 text-xs text-slate-400">上次同步：${safeText(s.last_synced_at, "未同步")}</p><div class="mt-4 flex gap-3"><button class="delete-source-btn rounded-2xl bg-red-700 px-4 py-2 text-sm text-white">删除源</button></div>`;
-        d.querySelector(".delete-source-btn").addEventListener("click", () => openDeleteSourceModal(s));
+        const deleteAction = state.admin.authenticated ? `<div class="mt-4 flex gap-3"><button class="delete-source-btn rounded-2xl bg-red-700 px-4 py-2 text-sm text-white">删除源</button></div>` : "";
+        d.innerHTML = `<div class="flex items-start justify-between gap-3"><div class="min-w-0"><p class="ui text-lg font-bold">${safeText(s.title, s.platform)}</p><p class="mt-1 break-all text-sm text-slate-500">${safeText(s.source_url)}</p></div><span class="rounded-full bg-slate-100 px-3 py-1 text-xs">${safeText(s.source_type)}</span></div>${keywords ? `<p class="mt-3 text-xs text-slate-500">关键词：${keywords}</p>` : ""}${statsLine ? `<p class="mt-2 text-xs text-slate-500">${statsLine}</p>` : ""}<p class="mt-3 text-xs text-slate-400">上次同步：${safeText(s.last_synced_at, "未同步")}</p>${deleteAction}`;
+        const deleteBtn = d.querySelector(".delete-source-btn");
+        if (deleteBtn) deleteBtn.addEventListener("click", () => openDeleteSourceModal(s));
         c.appendChild(d);
       });
     }
@@ -1688,8 +1907,10 @@
       renderResults([], "textResults", "textResultCount");
       renderResults([], "imageResults", "imageResultCount");
       await loadAdminStatus();
-      await loadSystemStatus();
-      await loadPeople();
+      if (state.auth.authenticated) {
+        await loadSystemStatus();
+        await loadPeople();
+      }
     });
   </script>
 </body>

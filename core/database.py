@@ -1,5 +1,9 @@
+import hashlib
+import hmac
 import json
 import os
+import re
+import secrets
 import sqlite3
 from pathlib import Path
 
@@ -10,6 +14,9 @@ from core.config import app_config
 
 DB_PATH = str(app_config.storage_dir / "metadata.db")
 INDEX_PATH = str(app_config.storage_dir / "face_index.faiss")
+USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,32}$")
+PASSWORD_ITERATIONS = 200_000
+USER_ROLES = {"user", "admin"}
 
 
 class DatabaseManager:
@@ -138,6 +145,27 @@ class DatabaseManager:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL UNIQUE,
+                    password_hash TEXT NOT NULL,
+                    salt TEXT NOT NULL,
+                    iterations INTEGER NOT NULL DEFAULT 200000,
+                    role TEXT NOT NULL CHECK(role IN ('user', 'admin')),
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_users_role_enabled
+                ON users(role, enabled)
+                """
+            )
 
         for column_name, definition in (
             ("content_id", "INTEGER"),
@@ -162,6 +190,173 @@ class DatabaseManager:
             ON contents(collection_source_id)
             """,
         )
+
+    def _validate_username(self, username):
+        cleaned = str(username or "").strip()
+        if not USERNAME_RE.match(cleaned):
+            raise ValueError(
+                "Username must be 3-32 ASCII letters, numbers, underscores, dots, or hyphens."
+            )
+        return cleaned
+
+    def _validate_role(self, role):
+        cleaned = str(role or "").strip().lower()
+        if cleaned not in USER_ROLES:
+            raise ValueError("Role must be user or admin.")
+        return cleaned
+
+    def _hash_password(self, password):
+        cleaned = str(password or "")
+        if len(cleaned) < 6:
+            raise ValueError("Password must be at least 6 characters.")
+        salt = secrets.token_hex(16)
+        password_hash = hashlib.pbkdf2_hmac(
+            "sha256",
+            cleaned.encode("utf-8"),
+            bytes.fromhex(salt),
+            PASSWORD_ITERATIONS,
+        ).hex()
+        return password_hash, salt, PASSWORD_ITERATIONS
+
+    def _serialize_user_row(self, row):
+        if row is None:
+            return None
+        item = dict(row)
+        item["enabled"] = bool(item.get("enabled"))
+        item.pop("password_hash", None)
+        item.pop("salt", None)
+        item.pop("iterations", None)
+        return item
+
+    def users_initialized(self):
+        with self._connect() as conn:
+            count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+        return count > 0
+
+    def setup_initial_admin(self, username, password):
+        username = self._validate_username(username)
+        password_hash, salt, iterations = self._hash_password(password)
+        with self._connect() as conn:
+            count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+            if count:
+                raise ValueError("Initial administrator is already set.")
+            conn.execute(
+                """
+                INSERT INTO users (username, password_hash, salt, iterations, role, enabled)
+                VALUES (?, ?, ?, ?, 'admin', 1)
+                """,
+                (username, password_hash, salt, iterations),
+            )
+            row = conn.execute(
+                "SELECT * FROM users WHERE username = ?", (username,)
+            ).fetchone()
+        return self._serialize_user_row(row)
+
+    def verify_user_password(self, username, password):
+        username = str(username or "").strip()
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM users WHERE username = ?", (username,)
+            ).fetchone()
+        if row is None or not int(row["enabled"] or 0):
+            return None
+        try:
+            candidate = hashlib.pbkdf2_hmac(
+                "sha256",
+                str(password or "").encode("utf-8"),
+                bytes.fromhex(row["salt"]),
+                int(row["iterations"] or PASSWORD_ITERATIONS),
+            ).hex()
+        except (TypeError, ValueError):
+            return None
+        if not hmac.compare_digest(candidate, row["password_hash"]):
+            return None
+        return self._serialize_user_row(row)
+
+    def get_user(self, user_id):
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM users WHERE id = ?", (int(user_id),)).fetchone()
+        return self._serialize_user_row(row)
+
+    def list_users(self):
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM users
+                ORDER BY role = 'admin' DESC, username COLLATE NOCASE ASC
+                """
+            ).fetchall()
+        return [self._serialize_user_row(row) for row in rows]
+
+    def create_user(self, username, password, role="user", enabled=True):
+        username = self._validate_username(username)
+        role = self._validate_role(role)
+        password_hash, salt, iterations = self._hash_password(password)
+        with self._connect() as conn:
+            try:
+                conn.execute(
+                    """
+                    INSERT INTO users (username, password_hash, salt, iterations, role, enabled)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    """,
+                    (username, password_hash, salt, iterations, role, 1 if enabled else 0),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise ValueError("Username already exists.") from exc
+            row = conn.execute(
+                "SELECT * FROM users WHERE username = ?", (username,)
+            ).fetchone()
+        return self._serialize_user_row(row)
+
+    def _enabled_admin_count(self, conn):
+        return int(
+            conn.execute(
+                "SELECT COUNT(*) FROM users WHERE role = 'admin' AND enabled = 1"
+            ).fetchone()[0]
+            or 0
+        )
+
+    def update_user(self, user_id, role=None, enabled=None):
+        user_id = int(user_id)
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+            if row is None:
+                raise ValueError("User not found.")
+
+            next_role = row["role"] if role is None else self._validate_role(role)
+            next_enabled = int(row["enabled"] if enabled is None else bool(enabled))
+            if row["role"] == "admin" and int(row["enabled"] or 0):
+                would_remove_admin = next_role != "admin" or not next_enabled
+                if would_remove_admin and self._enabled_admin_count(conn) <= 1:
+                    raise ValueError("Cannot disable or demote the last enabled administrator.")
+
+            conn.execute(
+                """
+                UPDATE users
+                SET role = ?, enabled = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (next_role, next_enabled, user_id),
+            )
+            row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+        return self._serialize_user_row(row)
+
+    def set_user_password(self, user_id, password):
+        password_hash, salt, iterations = self._hash_password(password)
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM users WHERE id = ?", (int(user_id),)).fetchone()
+            if row is None:
+                raise ValueError("User not found.")
+            conn.execute(
+                """
+                UPDATE users
+                SET password_hash = ?, salt = ?, iterations = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (password_hash, salt, iterations, int(user_id)),
+            )
+            row = conn.execute("SELECT * FROM users WHERE id = ?", (int(user_id),)).fetchone()
+        return self._serialize_user_row(row)
 
     def init_index(self):
         if os.path.exists(INDEX_PATH):
@@ -1077,6 +1272,7 @@ class DatabaseManager:
                     conn.execute("DROP TABLE IF EXISTS contents")
                     conn.execute("DROP TABLE IF EXISTS collection_sources")
                     conn.execute("DROP TABLE IF EXISTS cluster_snapshots")
+                    conn.execute("DROP TABLE IF EXISTS users")
             removed_files += 1
         if os.path.exists(INDEX_PATH):
             os.remove(INDEX_PATH)

@@ -2,6 +2,7 @@ import json
 import shutil
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -70,37 +71,70 @@ class AppApiTests(unittest.TestCase):
         app_config.save()
 
     def _setup_admin(self, password="secret123"):
-        response = self.client.post("/api/admin/setup", json={"password": password})
+        response = self.client.post(
+            "/api/auth/setup",
+            json={"username": "admin", "password": password},
+        )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["status"], "success")
         return password
 
-    def test_admin_status_reports_uninitialized_state(self):
-        response = self.client.get("/api/admin/status")
+    def _login_admin(self, password="secret123"):
+        response = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": password},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "success")
+
+    def _create_user(self, username="operator", password="user1234", role="user"):
+        response = self.client.post(
+            "/api/users",
+            json={"username": username, "password": password, "role": role},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "success")
+        return response.json()["user"]
+
+    def _login_user(self, username="operator", password="user1234"):
+        response = self.client.post(
+            "/api/auth/login",
+            json={"username": username, "password": password},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "success")
+
+    def test_auth_status_reports_uninitialized_state(self):
+        response = self.client.get("/api/auth/status")
 
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(payload["status"], "success")
-        self.assertFalse(payload["admin_initialized"])
-        self.assertFalse(payload["admin_authenticated"])
+        self.assertFalse(payload["initialized"])
+        self.assertFalse(payload["authenticated"])
+        self.assertIsNone(payload["user"])
 
-    def test_admin_setup_persists_hash_and_disallows_repeat(self):
+    def test_initial_admin_setup_creates_user_and_disallows_repeat(self):
         self._setup_admin()
 
-        status_payload = self.client.get("/api/admin/status").json()
-        config_payload = json.loads(app_config.system_config_path.read_text(encoding="utf-8"))
-        repeat_payload = self.client.post("/api/admin/setup", json={"password": "another123"}).json()
+        status_payload = self.client.get("/api/auth/status").json()
+        repeat_payload = self.client.post(
+            "/api/auth/setup",
+            json={"username": "another", "password": "another123"},
+        ).json()
+        users_payload = self.client.get("/api/users").json()
 
-        self.assertTrue(status_payload["admin_initialized"])
-        self.assertTrue(status_payload["admin_authenticated"])
-        self.assertTrue(config_payload["admin"]["password_hash"])
-        self.assertTrue(config_payload["admin"]["salt"])
-        self.assertNotEqual(config_payload["admin"]["password_hash"], "secret123")
+        self.assertTrue(status_payload["initialized"])
+        self.assertTrue(status_payload["authenticated"])
+        self.assertEqual(status_payload["user"]["username"], "admin")
+        self.assertEqual(status_payload["user"]["role"], "admin")
+        self.assertEqual(len(users_payload["users"]), 1)
+        self.assertNotIn("password_hash", users_payload["users"][0])
         self.assertEqual(repeat_payload["status"], "error")
 
     def test_protected_endpoints_require_login_after_setup(self):
         password = self._setup_admin()
-        self.client.post("/api/admin/logout")
+        self.client.post("/api/auth/logout")
 
         protected_payload = self.client.post(
             "/api/system/face-quality",
@@ -113,8 +147,14 @@ class AppApiTests(unittest.TestCase):
                 "blur_eval_size": 128,
             },
         ).json()
-        bad_login_payload = self.client.post("/api/admin/login", json={"password": "wrong-password"}).json()
-        good_login_payload = self.client.post("/api/admin/login", json={"password": password}).json()
+        bad_login_payload = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": "wrong-password"},
+        ).json()
+        good_login_payload = self.client.post(
+            "/api/auth/login",
+            json={"username": "admin", "password": password},
+        ).json()
         update_payload = self.client.post(
             "/api/system/face-quality",
             json={
@@ -136,17 +176,152 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(update_payload["face_quality_config"]["min_face_ratio"], 0.04)
         self.assertEqual(update_payload["face_quality_config"]["blur_eval_size"], 128)
 
-    def test_public_endpoints_remain_available_without_admin_login(self):
+    def test_non_auth_endpoints_require_login(self):
         self._setup_admin()
-        self.client.post("/api/admin/logout")
+        self.client.post("/api/auth/logout")
 
         status_payload = self.client.get("/api/system/status").json()
         people_payload = self.client.get("/api/people").json()
 
-        self.assertEqual(status_payload["status"], "success")
-        self.assertIn("runtime_config", status_payload)
-        self.assertEqual(people_payload["status"], "success")
-        self.assertIn("people", people_payload)
+        self.assertEqual(status_payload["status"], "error")
+        self.assertTrue(status_payload["auth_required"])
+        self.assertEqual(people_payload["status"], "error")
+        self.assertTrue(people_payload["auth_required"])
+
+    def test_admin_can_manage_users_and_disabled_user_cannot_login(self):
+        self._setup_admin()
+        user = self._create_user()
+
+        password_payload = self.client.post(
+            f"/api/users/{user['id']}/password",
+            json={"password": "changed123"},
+        ).json()
+        role_payload = self.client.patch(
+            f"/api/users/{user['id']}",
+            json={"role": "admin"},
+        ).json()
+        disabled_payload = self.client.patch(
+            f"/api/users/{user['id']}",
+            json={"enabled": False},
+        ).json()
+        login_payload = self.client.post(
+            "/api/auth/login",
+            json={"username": "operator", "password": "changed123"},
+        ).json()
+
+        self.assertEqual(password_payload["status"], "success")
+        self.assertEqual(role_payload["status"], "success")
+        self.assertEqual(role_payload["user"]["role"], "admin")
+        self.assertEqual(disabled_payload["status"], "success")
+        self.assertFalse(disabled_payload["user"]["enabled"])
+        self.assertEqual(login_payload["status"], "error")
+
+    def test_cannot_disable_or_demote_last_enabled_admin(self):
+        self._setup_admin()
+        admin = self.client.get("/api/auth/status").json()["user"]
+
+        disable_payload = self.client.patch(
+            f"/api/users/{admin['id']}",
+            json={"enabled": False},
+        ).json()
+        demote_payload = self.client.patch(
+            f"/api/users/{admin['id']}",
+            json={"role": "user"},
+        ).json()
+
+        self.assertEqual(disable_payload["status"], "error")
+        self.assertEqual(demote_payload["status"], "error")
+
+    def test_regular_user_can_collect_import_and_add_sources_but_not_admin_actions(self):
+        self._setup_admin()
+        self._create_user()
+        self.client.post("/api/auth/logout")
+        self._login_user()
+
+        with mock.patch.object(
+            app_module.collector,
+            "download",
+            return_value={
+                "platform": "generic",
+                "external_id": "video-1",
+                "title": "video",
+                "url": "https://example.com/video",
+                "path": "",
+            },
+        ), mock.patch.object(
+            app_module.db,
+            "upsert_content",
+            return_value={"id": 1},
+        ), mock.patch.object(
+            app_module.db,
+            "content_has_faces",
+            return_value=True,
+        ):
+            collect_payload = self.client.post(
+                "/api/collect?url=https%3A%2F%2Fexample.com%2Fvideo"
+            ).json()
+
+            import_payload = self.client.post(
+                "/api/import/post",
+                json={
+                    "external_id": "post-1",
+                    "post_text": "hello",
+                    "image_urls": ["https://example.com/a.jpg"],
+                },
+            ).json()
+
+        fake_adapter = mock.Mock()
+        fake_adapter.adapter_id = "weibo_user"
+        fake_adapter.default_limit = 5
+        fake_adapter.normalize_source.return_value = "https://weibo.cn/123456"
+        source_record = {"id": 1, "platform": "weibo", "source_url": "https://weibo.cn/123456"}
+        with mock.patch.object(
+            app_module.source_adapter_registry,
+            "select_adapter",
+            return_value=fake_adapter,
+        ), mock.patch.object(
+            app_module.db,
+            "register_collection_source",
+            return_value=source_record,
+        ), mock.patch.object(
+            app_module.db,
+            "get_collection_source",
+            return_value=source_record,
+        ), mock.patch.object(
+            app_module,
+            "sync_source_task",
+            return_value={"status": "success", "stats": {}},
+        ):
+            source_payload = self.client.post(
+                "/api/collect/source",
+                json={
+                    "source_url": "https://weibo.cn/123456",
+                    "platform": "weibo",
+                    "source_type": "weibo_user",
+                },
+            ).json()
+
+        delete_payload = self.client.post(
+            "/api/source/delete",
+            json={"source_id": 1},
+        ).json()
+        config_payload = self.client.post(
+            "/api/system/config",
+            json={"search": {"text_threshold": 0.2}},
+        ).json()
+        users_payload = self.client.get("/api/users").json()
+
+        self.assertEqual(collect_payload["status"], "success")
+        self.assertTrue(collect_payload["duplicate"])
+        self.assertEqual(import_payload["status"], "success")
+        self.assertTrue(import_payload["duplicate"])
+        self.assertEqual(source_payload["status"], "success")
+        self.assertEqual(delete_payload["status"], "error")
+        self.assertTrue(delete_payload["admin_required"])
+        self.assertEqual(config_payload["status"], "error")
+        self.assertTrue(config_payload["admin_required"])
+        self.assertEqual(users_payload["status"], "error")
+        self.assertTrue(users_payload["admin_required"])
 
     def test_source_adapter_config_api_requires_admin_and_persists_config(self):
         config_payload = {
