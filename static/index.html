@@ -113,6 +113,24 @@
           </button>
         </div>
       </details>
+      <details id="configNavGroup" class="nav-section hidden">
+        <summary class="nav-section-title cursor-pointer rounded-2xl px-4 py-3 text-sm text-white/80">参数管理</summary>
+        <div class="mt-2 space-y-1 pl-3">
+          <button data-view="admin" data-admin-target="config" onclick="switchView('admin'); switchAdminSubView('config')"
+            class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
+            <span>核心参数</span><span>Config</span>
+          </button>
+        </div>
+      </details>
+      <details class="nav-section">
+        <summary class="nav-section-title cursor-pointer rounded-2xl px-4 py-3 text-sm text-white/80">人物库</summary>
+        <div class="mt-2 space-y-1 pl-3">
+          <button data-view="people" onclick="switchView('people')"
+            class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
+            <span>人物库</span><span>People</span>
+          </button>
+        </div>
+      </details>
       <details class="nav-section" open>
         <summary class="nav-section-title cursor-pointer rounded-2xl px-4 py-3 text-sm text-white/80">智能检索</summary>
         <div class="mt-2 space-y-1 pl-3">
@@ -126,22 +144,9 @@
           </button>
         </div>
       </details>
-      <details class="nav-section">
-        <summary class="nav-section-title cursor-pointer rounded-2xl px-4 py-3 text-sm text-white/80">人物库</summary>
-        <div class="mt-2 space-y-1 pl-3">
-          <button data-view="people" onclick="switchView('people')"
-            class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
-            <span>人物库</span><span>People</span>
-          </button>
-        </div>
-      </details>
       <details id="systemNavGroup" class="nav-section hidden">
         <summary class="nav-section-title cursor-pointer rounded-2xl px-4 py-3 text-sm text-white/80">系统管理</summary>
         <div class="mt-2 space-y-1 pl-3">
-          <button data-view="admin" data-admin-target="config" onclick="switchView('admin'); switchAdminSubView('config')"
-            class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
-            <span>核心参数</span><span>Config</span>
-          </button>
           <button data-view="admin" data-admin-target="users" onclick="switchView('admin'); switchAdminSubView('users')"
             class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
             <span>账户管理</span><span>Users</span>
@@ -941,6 +946,16 @@
       document.getElementById("sidebarBackdrop").classList.toggle("hidden", !open);
     }
 
+    function getAdminSubViewTitle(subView) {
+      return {
+        manual: "手动导入",
+        sources: "添加账号监测",
+        config: "参数管理",
+        users: "账户管理",
+        reset: "系统重置"
+      }[subView] || "手动导入";
+    }
+
     function switchView(view) {
       state.currentView = view;
       document.querySelectorAll(".view").forEach(el => el.classList.add("hidden"));
@@ -954,7 +969,7 @@
         text: ["Text Search", "以文搜图"],
         image: ["Image Search", "以图搜图"],
         people: ["People Library", "人物库"],
-        admin: ["Data Console", state.adminSubView === "sources" ? "添加账号监测" : state.adminSubView === "manual" ? "手动导入" : "系统管理"]
+        admin: ["Data Console", getAdminSubViewTitle(state.adminSubView)]
       }[view];
       document.getElementById("viewKicker").textContent = meta[0];
       document.getElementById("viewTitle").textContent = meta[1];
@@ -981,7 +996,7 @@
       if (state.adminSubView === "config") switchConfigSubView("collection");
       if (state.adminSubView === "users") loadUsers();
       if (state.currentView === "admin") {
-        document.getElementById("viewTitle").textContent = state.adminSubView === "sources" ? "添加账号监测" : state.adminSubView === "manual" ? "手动导入" : "系统管理";
+        document.getElementById("viewTitle").textContent = getAdminSubViewTitle(state.adminSubView);
       }
     }
 
@@ -1044,6 +1059,7 @@
       document.getElementById("authHint").textContent = state.auth.initialized ? "请输入管理员分配的账号和密码。" : "首次进入系统，请创建首个管理员用户名和密码。";
       document.getElementById("btnAuthSubmit").textContent = state.auth.initialized ? "登录" : "创建并进入";
 
+      document.getElementById("configNavGroup").classList.toggle("hidden", !isAdmin);
       document.getElementById("systemNavGroup").classList.toggle("hidden", !isAdmin);
       document.querySelectorAll("[data-admin-only='true']").forEach(el => el.classList.toggle("hidden", !isAdmin));
       document.getElementById("adminStatusText").textContent = isLoggedIn
