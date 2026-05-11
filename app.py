@@ -1,5 +1,7 @@
 import json
+import logging
 import os
+import re
 import secrets
 import threading
 from contextlib import contextmanager
@@ -7,6 +9,14 @@ from pathlib import Path
 
 # Default to the domestic mirror unless the process already selected an endpoint.
 os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+
+LOG_FORMAT = "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
+logging.basicConfig(level=logging.WARNING, format=LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S")
+logger = logging.getLogger("app")
+logger.setLevel(logging.INFO)
+logging.getLogger("core").setLevel(logging.INFO)
+for noisy_logger_name in ("faiss", "faiss.loader", "httpx", "httpcore", "urllib3"):
+    logging.getLogger(noisy_logger_name).setLevel(logging.WARNING)
 
 import cv2
 import numpy as np
@@ -29,6 +39,7 @@ from core.source_adapters import (
     SourceAdapterRegistry,
     parse_adapter_config,
 )
+from core.weibo_adapter import WeiboAuthenticationError
 
 app = FastAPI(title="FaceRetriever 2026")
 
@@ -49,6 +60,11 @@ _session_seconds = 8 * 60 * 60
 app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/faces", StaticFiles(directory=str(app_config.faces_dir)), name="faces")
 app.mount("/content", StaticFiles(directory=str(app_config.content_dir)), name="content")
+
+
+@app.on_event("startup")
+async def _log_startup():
+    logger.info("服务已启动：host=0.0.0.0 port=8000")
 
 
 @app.get("/")
@@ -209,7 +225,7 @@ def _require_login(request: Request):
         return None
     return {
         "status": "error",
-        "message": "Authentication required.",
+        "message": "请先登录。",
         "auth_required": True,
     }
 
@@ -219,10 +235,10 @@ def _require_admin(request: Request):
     if user and user.get("role") == "admin":
         return None
     if not db.users_initialized():
-        message = "Initial administrator is not set."
+        message = "尚未创建初始管理员。"
         setup_required = True
     else:
-        message = "Admin authentication required."
+        message = "需要管理员权限。"
         setup_required = False
     return {
         "status": "error",
@@ -244,11 +260,11 @@ def _maintenance_active():
 
 
 def _maintenance_message():
-    return "System maintenance is in progress. Try again later."
+    return "系统正在维护中，请稍后再试。"
 
 
 def _busy_message():
-    return "Background collection or processing is still running."
+    return "后台采集或处理任务仍在运行，请稍后再操作。"
 
 
 def _runtime_blocked_response():
@@ -369,18 +385,18 @@ def _validate_face_quality_payload(data):
         )
         blur_eval_size = int(data.get("blur_eval_size", current["blur_eval_size"]))
     except (TypeError, ValueError):
-        raise ValueError("Invalid face quality parameters.")
+        raise ValueError("人脸过滤参数无效。")
 
     if not 20 <= min_face_size <= 256:
-        raise ValueError("min_face_size must be between 20 and 256.")
+        raise ValueError("最小人脸尺寸必须在 20 到 256 之间。")
     if not 0.0 <= min_face_ratio <= 0.5:
-        raise ValueError("min_face_ratio must be between 0.0 and 0.5.")
+        raise ValueError("最小画面占比必须在 0.0 到 0.5 之间。")
     if not 0 <= min_laplacian_var <= 1000:
-        raise ValueError("min_laplacian_var must be between 0 and 1000.")
+        raise ValueError("清晰度阈值必须在 0 到 1000 之间。")
     if not 0.0 <= max_pose_deviation <= 1.0:
-        raise ValueError("max_pose_deviation must be between 0.0 and 1.0.")
+        raise ValueError("姿态偏差必须在 0.0 到 1.0 之间。")
     if not 32 <= blur_eval_size <= 512:
-        raise ValueError("blur_eval_size must be between 32 and 512.")
+        raise ValueError("清晰度评估尺寸必须在 32 到 512 之间。")
 
     return {
         "enabled": enabled,
@@ -397,7 +413,7 @@ def _validate_platform_collection_payload(collection):
     platforms = json.loads(json.dumps(current_platforms))
     platform_payloads = collection.get("platforms") or {}
     if platform_payloads and not isinstance(platform_payloads, dict):
-        raise ValueError("collection.platforms must be an object.")
+        raise ValueError("采集平台配置必须是对象。")
 
     legacy_keys = {
         "source_sync_limit",
@@ -427,7 +443,7 @@ def _validate_platform_collection_payload(collection):
                 collection.get("weibo_retry_count", app_config.weibo_retry_count)
             )
         except (TypeError, ValueError):
-            raise ValueError("Invalid collection parameters.")
+            raise ValueError("采集参数无效。")
 
         for platform in ("bilibili", "youtube", "x", "generic"):
             platforms[platform]["sync_limit"] = source_sync_limit
@@ -451,9 +467,9 @@ def _validate_platform_collection_payload(collection):
     for platform, values in platform_payloads.items():
         platform = str(platform or "").lower()
         if platform not in platforms:
-            raise ValueError(f"Unsupported collection platform: {platform}.")
+            raise ValueError(f"不支持的采集平台：{platform}。")
         if not isinstance(values, dict):
-            raise ValueError("Platform collection config must be an object.")
+            raise ValueError("单个平台采集配置必须是对象。")
         target = platforms[platform]
         for key in (
             "enabled",
@@ -480,25 +496,25 @@ def _validate_platform_collection_payload(collection):
             values["timeout_seconds"] = int(values.get("timeout_seconds"))
             values["retry_count"] = int(values.get("retry_count"))
         except (TypeError, ValueError):
-            raise ValueError(f"Invalid {platform} collection parameters.")
+            raise ValueError(f"{platform} 的采集参数无效。")
         if not 1 <= values["sync_limit"] <= 100:
-            raise ValueError(f"{platform}.sync_limit must be between 1 and 100.")
+            raise ValueError(f"{platform} 的同步数量必须在 1 到 100 之间。")
         if values["sync_interval_minutes"] < 0:
             raise ValueError(
-                f"{platform}.sync_interval_minutes must be greater than or equal to 0."
+                f"{platform} 的同步间隔分钟必须大于或等于 0。"
             )
         if not 5 <= values["timeout_seconds"] <= 120:
-            raise ValueError(f"{platform}.timeout_seconds must be between 5 and 120.")
+            raise ValueError(f"{platform} 的超时时间必须在 5 到 120 秒之间。")
         if not 1 <= values["retry_count"] <= 10:
-            raise ValueError(f"{platform}.retry_count must be between 1 and 10.")
+            raise ValueError(f"{platform} 的重试次数必须在 1 到 10 之间。")
 
     bilibili = platforms["bilibili"]
     bilibili["impersonate"] = str(bilibili.get("impersonate") or "").strip()
     bilibili["referer"] = str(bilibili.get("referer") or "").strip()
     if not bilibili["impersonate"]:
-        raise ValueError("bilibili.impersonate is required.")
+        raise ValueError("Bilibili 浏览器模拟目标不能为空。")
     if not bilibili["referer"]:
-        raise ValueError("bilibili.referer is required.")
+        raise ValueError("Bilibili Referer 不能为空。")
 
     weibo = platforms["weibo"]
     generic = platforms["generic"]
@@ -524,9 +540,9 @@ def _validate_runtime_config_payload(data):
         try:
             frame_sample_seconds = float(processing.get("frame_sample_seconds"))
         except (TypeError, ValueError):
-            raise ValueError("frame_sample_seconds must be a number.")
+            raise ValueError("抽帧间隔必须是数字。")
         if not 0.2 <= frame_sample_seconds <= 30:
-            raise ValueError("frame_sample_seconds must be between 0.2 and 30.")
+            raise ValueError("抽帧间隔必须在 0.2 到 30 秒之间。")
         updates["processing"] = {"frame_sample_seconds": frame_sample_seconds}
 
     search = payload.get("search") or {}
@@ -550,21 +566,21 @@ def _validate_runtime_config_payload(data):
                 search.get("semantic_corpus_style") or app_config.semantic_corpus_style
             ).strip()
         except (TypeError, ValueError):
-            raise ValueError("Invalid search parameters.")
+            raise ValueError("检索参数无效。")
         if not 0 <= text_threshold <= 1:
-            raise ValueError("text_threshold must be between 0 and 1.")
+            raise ValueError("文本阈值必须在 0 到 1 之间。")
         if not 0 <= image_cosine_threshold <= 1:
-            raise ValueError("image_cosine_threshold must be between 0 and 1.")
+            raise ValueError("图片阈值必须在 0 到 1 之间。")
         if not 1 <= image_top_k <= 100:
-            raise ValueError("image_top_k must be between 1 and 100.")
+            raise ValueError("图片返回数量必须在 1 到 100 之间。")
         if not 1 <= text_top_k <= 100:
-            raise ValueError("text_top_k must be between 1 and 100.")
+            raise ValueError("文本返回数量必须在 1 到 100 之间。")
         if not semantic_model_id:
-            raise ValueError("semantic_model_id is required.")
+            raise ValueError("语义模型 ID 不能为空。")
         if semantic_model_mode not in {"standard", "qwen3_4b_int4_experimental"}:
-            raise ValueError("Unsupported semantic_model_mode.")
+            raise ValueError("不支持的语义模型模式。")
         if semantic_corpus_style not in {"structured_zh"}:
-            raise ValueError("Unsupported semantic_corpus_style.")
+            raise ValueError("不支持的语义语料风格。")
         updates["search"] = {
             "text_threshold": text_threshold,
             "image_cosine_threshold": image_cosine_threshold,
@@ -600,10 +616,10 @@ def _validate_runtime_config_payload(data):
         elif isinstance(hotwords, list):
             hotword_values = [str(item).strip() for item in hotwords]
         else:
-            raise ValueError("hotwords must be a list or comma-separated string.")
+            raise ValueError("ASR 热词必须是列表或逗号分隔的字符串。")
         hotword_values = [item for item in hotword_values if item]
         if preferred_backend not in {"faster_whisper", "whisper"}:
-            raise ValueError("Unsupported transcription backend.")
+            raise ValueError("不支持的语音识别后端。")
         if model_size not in {
             "tiny",
             "base",
@@ -613,7 +629,7 @@ def _validate_runtime_config_payload(data):
             "large-v2",
             "large-v3",
         }:
-            raise ValueError("Unsupported transcription model_size.")
+            raise ValueError("不支持的语音识别模型尺寸。")
         updates["transcription"] = {
             "enabled": bool(
                 transcription.get("enabled", app_config.transcription_enabled)
@@ -634,11 +650,11 @@ def _validate_runtime_config_payload(data):
             vision.get("caption_language") or app_config.caption_language
         ).strip()
         if not vlm_model_id:
-            raise ValueError("vlm_model_id is required.")
+            raise ValueError("视觉语言模型 ID 不能为空。")
         if caption_style not in {"retrieval_keywords", "detailed_caption"}:
-            raise ValueError("Unsupported caption_style.")
+            raise ValueError("不支持的图像描述风格。")
         if caption_language not in {"zh", "en"}:
-            raise ValueError("Unsupported caption_language.")
+            raise ValueError("不支持的图像描述语言。")
         updates["vision"] = {
             "vlm_model_id": vlm_model_id,
             "release_vlm_after_task": bool(
@@ -668,15 +684,15 @@ def _validate_runtime_config_payload(data):
             eps = float(clustering.get("eps"))
             min_samples = int(clustering.get("min_samples"))
         except (TypeError, ValueError):
-            raise ValueError("Invalid clustering parameters.")
+            raise ValueError("聚类参数无效。")
         if algorithm not in {"dbscan", "hdbscan", "optics"}:
-            raise ValueError("Unsupported clustering algorithm.")
+            raise ValueError("不支持的聚类算法。")
         if metric not in {"cosine", "euclidean"}:
-            raise ValueError("Unsupported clustering metric.")
+            raise ValueError("不支持的聚类距离度量。")
         if not 0.01 <= eps <= 5:
-            raise ValueError("eps must be between 0.01 and 5.")
+            raise ValueError("聚类半径必须在 0.01 到 5 之间。")
         if not 2 <= min_samples <= 50:
-            raise ValueError("min_samples must be between 2 and 50.")
+            raise ValueError("最小样本数必须在 2 到 50 之间。")
         updates["clustering"] = {
             "algorithm": algorithm,
             "metric": metric,
@@ -689,7 +705,7 @@ def _validate_runtime_config_payload(data):
         updates["face_quality"] = _validate_face_quality_payload(face_quality)
 
     if not updates:
-        raise ValueError("No supported configuration fields were provided.")
+        raise ValueError("未提供可保存的配置项。")
     return updates
 
 
@@ -720,11 +736,51 @@ def _serialize_face(record):
         "semantic_text": semantic_text,
         "semantic_source": _parse_sources(record.get("semantic_source")),
         "person_id": record.get("person_id"),
+        "person_name": record.get("person_name") or "",
         "cluster_config": app_config.cluster_defaults(),
         "score": record.get("score"),
         "metric": record.get("metric"),
         "distance": record.get("distance"),
         "link_url": record.get("link_url") or _get_source_link(record),
+    }
+
+
+def _normalize_name_lookup_text(value):
+    return str(value or "").strip().casefold()
+
+
+def _match_person_name_query(query, person_name_map):
+    normalized_query = _normalize_name_lookup_text(query)
+    if not normalized_query:
+        return None
+
+    matches = []
+    for person_id, name in person_name_map.items():
+        cleaned_name = str(name or "").strip()
+        normalized_name = _normalize_name_lookup_text(cleaned_name)
+        if not normalized_name or normalized_name not in normalized_query:
+            continue
+        matches.append((len(normalized_name), cleaned_name, normalized_name, int(person_id)))
+
+    if not matches:
+        return None
+
+    best_length = max(item[0] for item in matches)
+    best_matches = [item for item in matches if item[0] == best_length]
+    selected_name = best_matches[0][1]
+    selected_name_normalized = best_matches[0][2]
+    person_ids = [item[3] for item in matches if item[2] == selected_name_normalized]
+    remaining_query = re.sub(
+        re.escape(selected_name),
+        "",
+        str(query or "").strip(),
+        count=1,
+        flags=re.IGNORECASE,
+    ).strip()
+    return {
+        "name": selected_name,
+        "person_ids": person_ids,
+        "remaining_query": remaining_query,
     }
 
 
@@ -766,6 +822,7 @@ def process_video_task(video_info):
             return
 
         content_id = video_info["content_id"]
+        faces_count = 0
         subtitle_path = _find_best_subtitle_path(video_info)
         if subtitle_path:
             db.update_content_paths(content_id, subtitle_path=subtitle_path)
@@ -859,13 +916,21 @@ def process_video_task(video_info):
                             post_text="",
                             semantic_text=face_data["semantic_text"],
                             semantic_source=face_data["semantic_source"],
+                            face_metrics=face_data.get("face_metrics"),
                         )
+                        faces_count += 1
 
             count += 1
             frame_id += 1
 
         cap.release()
         db.update_content_paths(content_id, local_path=video_info["path"])
+        logger.info(
+            "视频处理完成：content_id=%s title=%s faces=%s",
+            content_id,
+            video_info.get("title", ""),
+            faces_count,
+        )
 
 
 def process_post_task(post_info):
@@ -876,6 +941,7 @@ def process_post_task(post_info):
         content_id = post_info["content_id"]
         post_text = post_info.get("post_text", "")
         images = post_info.get("images", [])
+        faces_count = 0
 
         for index, image_item in enumerate(images):
             image = cv2.imread(image_item["local_path"])
@@ -912,9 +978,17 @@ def process_post_task(post_info):
                     post_text=face_data["post_text"],
                     semantic_text=face_data["semantic_text"],
                     semantic_source=face_data["semantic_source"],
+                    face_metrics=face_data.get("face_metrics"),
                 )
+                faces_count += 1
 
         db.update_content_paths(content_id, post_text=post_text)
+        logger.info(
+            "图文处理完成：content_id=%s external_id=%s faces=%s",
+            content_id,
+            post_info.get("external_id", ""),
+            faces_count,
+        )
 
 
 def _sync_post_entry(source_record, adapter, entry):
@@ -944,7 +1018,13 @@ def _sync_post_entry(source_record, adapter, entry):
             entry.get("image_urls") or [],
             request_headers=request_headers,
         )
-    except Exception:
+    except Exception as exc:
+        logger.warning(
+            "图文条目导入失败：source_id=%s external_id=%s error=%s",
+            source_record.get("id"),
+            entry.get("external_id", ""),
+            exc,
+        )
         return "failed"
 
     if not images:
@@ -1059,6 +1139,15 @@ def sync_source_task(source_record, limit):
             title=fetched.get("title") or source_record.get("title", ""),
             metadata=mark_metadata,
         )
+        logger.info(
+            "采集源同步完成：source_id=%s platform=%s fetched=%s imported=%s duplicate=%s failed=%s",
+            source_record.get("id"),
+            fetched.get("platform", source_record.get("platform", "")),
+            sync_stats["fetched_count"],
+            sync_stats["imported_count"],
+            sync_stats["duplicate_count"],
+            sync_stats["failed_count"],
+        )
         return {
             "platform": fetched.get("platform", source_record.get("platform", "")),
             "title": fetched.get("title") or source_record.get("title", ""),
@@ -1101,7 +1190,7 @@ async def auth_setup(response: Response, data: dict = Body(default={})):
 async def auth_login(response: Response, data: dict = Body(default={})):
     user = db.verify_user_password(data.get("username", ""), data.get("password", ""))
     if not user:
-        return {"status": "error", "message": "Invalid username or password."}
+        return {"status": "error", "message": "用户名或密码错误。"}
     _create_user_session(response, user)
     return {
         "status": "success",
@@ -1151,7 +1240,7 @@ async def admin_setup(response: Response, data: dict = Body(default={})):
 async def admin_login(response: Response, data: dict = Body(default={})):
     user = db.verify_user_password(data.get("username", "admin"), data.get("password", ""))
     if not user or user.get("role") != "admin":
-        return {"status": "error", "message": "Invalid admin password."}
+        return {"status": "error", "message": "管理员账号或密码错误。"}
     _create_user_session(response, user)
     return {
         "status": "success",
@@ -1346,6 +1435,89 @@ async def delete_source_adapter(request: Request, adapter_id: str):
         return {"status": "error", "message": str(exc)}
 
 
+def _normalize_image_urls(value):
+    if isinstance(value, str):
+        raw_items = re.split(r"[\n,，]+", value)
+    else:
+        raw_items = value or []
+    return [str(item or "").strip() for item in raw_items if str(item or "").strip()]
+
+
+def _is_weibo_auth_error(exc):
+    return isinstance(exc, WeiboAuthenticationError) or "微博 Cookie 无效或已过期" in str(exc)
+
+
+def _submit_post_import(data, background_tasks, extracted=None, import_mode="post"):
+    url = str(data.get("url", "") or "").strip()
+    provided_text = str(data.get("post_text", "") or "").strip()
+    image_urls = _normalize_image_urls(data.get("image_urls", []))
+    platform = str(
+        data.get("platform")
+        or (extracted or {}).get("platform")
+        or collector.detect_platform(url or "https://weibo.com")
+    ).lower()
+
+    if extracted is None:
+        extracted = collector.extract_post_metadata(url) if url else {}
+
+    external_id = (
+        data.get("external_id")
+        or extracted.get("external_id")
+        or collector.derive_external_id(url, provided_text or json.dumps(image_urls))
+    )
+    post_text = provided_text or extracted.get("post_text", "")
+    merged_image_urls = image_urls or extracted.get("image_urls", [])
+
+    if not merged_image_urls:
+        return {
+            "status": "error",
+            "msg": "未提供或解析到图片链接。",
+        }
+
+    content_metadata = dict(extracted.get("metadata") or {})
+    content_metadata["import_mode"] = import_mode
+    content = db.upsert_content(
+        platform=platform,
+        external_id=external_id,
+        content_type="post",
+        title=data.get("title") or extracted.get("title", ""),
+        source_url=url or extracted.get("source_url", ""),
+        post_text=post_text,
+        metadata=content_metadata,
+    )
+
+    if db.content_has_faces(content["id"]):
+        return {
+            "status": "success",
+            "msg": "图文内容已存在，已跳过重复处理。",
+            "duplicate": True,
+        }
+
+    images = collector.download_post_images(platform, external_id, merged_image_urls)
+    if not images:
+        return {
+            "status": "error",
+            "msg": "图片下载失败，请检查图片链接或微博 Cookie。",
+        }
+
+    background_tasks.add_task(
+        process_post_task,
+        {
+            "content_id": content["id"],
+            "platform": platform,
+            "external_id": external_id,
+            "post_text": post_text,
+            "url": url or extracted.get("source_url", ""),
+            "images": images,
+        },
+    )
+    return {
+        "status": "success",
+        "msg": "图文导入已提交到后台。",
+        "images": len(images),
+    }
+
+
 @app.post("/api/collect")
 async def collect_video(request: Request, url: str, background_tasks: BackgroundTasks):
     auth_error = _require_login(request)
@@ -1353,6 +1525,24 @@ async def collect_video(request: Request, url: str, background_tasks: Background
         return auth_error
     if _maintenance_active():
         return _runtime_blocked_response()
+
+    platform = collector.detect_platform(url)
+    weibo_post_error = None
+    if platform == "weibo":
+        try:
+            extracted = collector.extract_post_metadata(url)
+            if extracted.get("image_urls"):
+                return _submit_post_import(
+                    {"url": url, "platform": "weibo"},
+                    background_tasks,
+                    extracted=extracted,
+                    import_mode="single_link",
+                )
+        except Exception as exc:
+            if _is_weibo_auth_error(exc):
+                logger.warning("微博图文认证失败：url=%s error=%s", url, exc)
+                return {"status": "error", "msg": str(exc)}
+            weibo_post_error = exc
 
     try:
         info = collector.download(url)
@@ -1371,7 +1561,7 @@ async def collect_video(request: Request, url: str, background_tasks: Background
         if db.content_has_faces(content["id"]):
             return {
                 "status": "success",
-                "msg": "Content already exists, skipping duplicate processing.",
+                "msg": "内容已存在，已跳过重复处理。",
                 "video": info["title"],
                 "duplicate": True,
             }
@@ -1379,10 +1569,25 @@ async def collect_video(request: Request, url: str, background_tasks: Background
         background_tasks.add_task(process_video_task, info)
         return {
             "status": "success",
-            "msg": "Video downloaded, semantic processing started in background.",
+            "msg": "视频已下载，语义处理已在后台开始。",
             "video": info["title"],
         }
     except Exception as e:
+        if platform == "weibo" and (
+            "No video formats found" in str(e) or weibo_post_error is not None
+        ):
+            if weibo_post_error is not None:
+                if _is_weibo_auth_error(weibo_post_error):
+                    return {"status": "error", "msg": str(weibo_post_error)}
+                return {
+                    "status": "error",
+                    "msg": f"微博图文解析失败：{weibo_post_error}；也未发现可下载视频。",
+                }
+            return {
+                "status": "error",
+                "msg": "未解析到微博图文图片，也未发现可下载视频。请检查微博 Cookie 或确认链接是否为公开图文/视频详情页。",
+            }
+        logger.warning("视频采集提交失败：url=%s error=%s", url, e)
         return {"status": "error", "msg": str(e)}
 
 
@@ -1401,7 +1606,7 @@ async def collect_source(
     try:
         source_url = data.get("source_url", "").strip()
         if not source_url:
-            return {"status": "error", "msg": "Missing source_url"}
+            return {"status": "error", "msg": "请填写采集源链接。"}
         platform = str(data.get("platform") or collector.detect_platform(source_url)).lower()
         source_type = str(data.get("source_type") or (
             "weibo_user" if platform == "weibo" else "channel"
@@ -1409,7 +1614,7 @@ async def collect_source(
         if platform == "x" and source_type == "channel":
             source_type = "x_user"
         if not app_config.platform_enabled(platform):
-            return {"status": "error", "msg": f"{platform} collection is disabled."}
+            return {"status": "error", "msg": f"{platform} 采集当前未启用。"}
         adapter_id = data.get("adapter_id") or data.get("source_adapter_id")
         adapter = source_adapter_registry.select_adapter(
             source_url,
@@ -1448,7 +1653,7 @@ async def collect_source(
                 return sync_result
             return {
                 "status": "success",
-                "msg": "Source sync completed.",
+                "msg": "采集源同步已完成。",
                 "source": db.get_collection_source(source_record["id"]),
                 "sync_stats": sync_result.get("stats", {}),
             }
@@ -1456,10 +1661,11 @@ async def collect_source(
         background_tasks.add_task(sync_source_task, source_record, limit)
         return {
             "status": "success",
-            "msg": "Source sync scheduled in background.",
+            "msg": "采集源同步已提交到后台。",
             "source": source_record,
         }
     except Exception as e:
+        logger.warning("采集源同步提交失败：source_url=%s error=%s", data.get("source_url", ""), e)
         return {"status": "error", "msg": str(e)}
 
 
@@ -1479,14 +1685,14 @@ async def delete_source(request: Request, data: dict = Body(default={})):
     source_id = data.get("source_id")
     delete_data = bool(data.get("delete_data"))
     if source_id is None:
-        return {"status": "error", "message": "Missing source_id"}
+        return {"status": "error", "message": "缺少采集源 ID。"}
 
     try:
         source_id = int(source_id)
         with _maintenance_guard():
             source = db.get_collection_source(source_id)
             if source is None:
-                return {"status": "error", "message": "Collection source not found."}
+                return {"status": "error", "message": "采集源不存在。"}
 
             if delete_data:
                 result = db.delete_source_with_data(source_id)
@@ -1563,65 +1769,9 @@ async def import_post(
         return _runtime_blocked_response()
 
     try:
-        url = data.get("url", "").strip()
-        provided_text = data.get("post_text", "").strip()
-        image_urls = [
-            item.strip() for item in data.get("image_urls", []) if item.strip()
-        ]
-        platform = data.get("platform") or collector.detect_platform(
-            url or "https://weibo.com"
-        )
-
-        extracted = collector.extract_post_metadata(url) if url else {}
-        external_id = (
-            data.get("external_id")
-            or extracted.get("external_id")
-            or collector.derive_external_id(url, provided_text or json.dumps(image_urls))
-        )
-        post_text = provided_text or extracted.get("post_text", "")
-        merged_image_urls = image_urls or extracted.get("image_urls", [])
-
-        if not merged_image_urls:
-            return {
-                "status": "error",
-                "msg": "No image URLs were provided or extracted.",
-            }
-
-        content = db.upsert_content(
-            platform=platform,
-            external_id=external_id,
-            content_type="post",
-            title=data.get("title") or extracted.get("title", ""),
-            source_url=url or extracted.get("source_url", ""),
-            post_text=post_text,
-            metadata={"import_mode": "post"},
-        )
-
-        if db.content_has_faces(content["id"]):
-            return {
-                "status": "success",
-                "msg": "Post already exists, skipping duplicate processing.",
-                "duplicate": True,
-            }
-
-        images = collector.download_post_images(platform, external_id, merged_image_urls)
-        background_tasks.add_task(
-            process_post_task,
-            {
-                "content_id": content["id"],
-                "platform": platform,
-                "external_id": external_id,
-                "post_text": post_text,
-                "url": url or extracted.get("source_url", ""),
-                "images": images,
-            },
-        )
-        return {
-            "status": "success",
-            "msg": "Post import scheduled in background.",
-            "images": len(images),
-        }
+        return _submit_post_import(data, background_tasks, import_mode="post")
     except Exception as e:
+        logger.warning("图文导入提交失败：url=%s error=%s", data.get("url", ""), e)
         return {"status": "error", "msg": str(e)}
 
 
@@ -1633,6 +1783,42 @@ async def search_by_text(request: Request, q: str):
     query = q.strip()
     if not query:
         return {"status": "success", "results": []}
+
+    person_match = _match_person_name_query(query, db.get_person_name_map())
+    if person_match:
+        person_records = db.get_faces_for_person_ids(person_match["person_ids"])
+        if not person_records:
+            return {"status": "success", "results": []}
+
+        remaining_query = person_match["remaining_query"]
+        if not remaining_query:
+            results = []
+            for record in person_records[: app_config.text_top_k]:
+                item = dict(record)
+                item["score"] = 1.0
+                item["metric"] = "person_name"
+                item["link_url"] = _get_source_link(item)
+                results.append(_serialize_face(item))
+            return {"status": "success", "results": results}
+
+        descriptions = [
+            record.get("semantic_text") or record.get("description", "")
+            for record in person_records
+        ]
+        ranked = ai_engine.rank_texts_by_similarity(remaining_query, descriptions)
+        search_results = []
+        for index, similarity in ranked:
+            if similarity < app_config.text_threshold:
+                continue
+
+            record = dict(person_records[index])
+            record["score"] = round(float(similarity), 4)
+            record["metric"] = "person_semantic"
+            record["link_url"] = _get_source_link(record)
+            search_results.append(_serialize_face(record))
+
+        search_results.sort(key=lambda item: item["score"], reverse=True)
+        return {"status": "success", "results": search_results[: app_config.text_top_k]}
 
     all_records = db.get_all_faces()
     if not all_records:
@@ -1670,14 +1856,14 @@ async def search_image(request: Request, metric: str = "cosine", file: UploadFil
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
         if img is None:
-            return {"status": "error", "message": "Invalid image file"}
+            return {"status": "error", "message": "图片文件无效。"}
 
         target_embedding, _ = ai_engine.get_face_embedding(
             img,
             face_quality_config={"enabled": False},
         )
         if target_embedding is None:
-            return {"status": "error", "message": "No face detected"}
+            return {"status": "error", "message": "未检测到人脸。"}
 
         if metric.lower() == "euclidean":
             matches = db.search_faces_by_metric(
@@ -1699,6 +1885,7 @@ async def search_image(request: Request, metric: str = "cosine", file: UploadFil
 
         return {"status": "success", "metric": metric.lower(), "results": results}
     except Exception as e:
+        logger.warning("图片检索失败：filename=%s error=%s", getattr(file, "filename", ""), e)
         return {"status": "error", "message": str(e)}
 
 
@@ -1733,6 +1920,7 @@ async def run_clustering(request: Request, data: dict = Body(default={})):
             result["has_cluster_snapshot"] = db.has_cluster_snapshot()
         return result
     except Exception as e:
+        logger.warning("聚类运行失败：error=%s", e)
         return {"status": "error", "message": str(e)}
 
 
@@ -1744,7 +1932,7 @@ async def rollback_clustering(request: Request):
     try:
         restored = db.restore_cluster_snapshot()
         if restored is None:
-            return {"status": "error", "message": "No cluster snapshot available."}
+            return {"status": "error", "message": "没有可用的聚类回退快照。"}
 
         snapshot_config = restored.get("cluster_config") or {}
         if snapshot_config:
@@ -1763,6 +1951,7 @@ async def rollback_clustering(request: Request):
             "has_cluster_snapshot": db.has_cluster_snapshot(),
         }
     except Exception as e:
+        logger.warning("聚类回退失败：error=%s", e)
         return {"status": "error", "message": str(e)}
 
 
@@ -1791,6 +1980,7 @@ async def cluster_evaluation(request: Request, data: dict = Body(default={})):
             "image_results": image_results.get("results", []),
         }
     except Exception as e:
+        logger.warning("聚类评估失败：error=%s", e)
         return {"status": "error", "message": str(e)}
 
 
@@ -1833,7 +2023,7 @@ async def rename_person(request: Request, data: dict = Body(default={})):
     person_id = data.get("person_id")
     new_name = data.get("name")
     if person_id is None or not new_name:
-        return {"status": "error", "message": "Missing required fields"}
+        return {"status": "error", "message": "缺少必要字段。"}
 
     db.rename_person(person_id, new_name)
     return {"status": "success"}
@@ -1847,7 +2037,7 @@ async def reassign_face(request: Request, data: dict = Body(default={})):
     face_id = data.get("face_id")
     target_person_id = data.get("target_person_id")
     if face_id is None or target_person_id is None:
-        return {"status": "error", "message": "Missing required fields"}
+        return {"status": "error", "message": "缺少必要字段。"}
 
     db.reassign_face(face_id, target_person_id)
     return {"status": "success"}
@@ -1861,7 +2051,7 @@ async def merge_person(request: Request, data: dict = Body(default={})):
     source_id = data.get("source_person_id")
     target_id = data.get("target_person_id")
     if source_id is None or target_id is None:
-        return {"status": "error", "message": "Missing required fields"}
+        return {"status": "error", "message": "缺少必要字段。"}
 
     try:
         db.merge_persons(source_id, target_id)
@@ -1873,4 +2063,4 @@ async def merge_person(request: Request, data: dict = Body(default={})):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000, access_log=False, log_level="warning")

@@ -49,17 +49,17 @@ class XUserCollector:
     def load_bearer_token(self):
         if not app_config.platform_auth_enabled("x"):
             raise RuntimeError(
-                "X bearer token authentication is disabled in the current configuration."
+                "X 认证令牌当前未启用。"
             )
         if not self.bearer_token_file.exists():
             raise RuntimeError(
-                f"X bearer token file is missing: {self.bearer_token_file}"
+                f"缺少 X 认证令牌文件：{self.bearer_token_file}"
             )
         token = self.bearer_token_file.read_text(encoding="utf-8").strip()
         if token.lower().startswith("bearer "):
             token = token.split(" ", 1)[1].strip()
         if not token:
-            raise RuntimeError("X bearer token file is empty.")
+            raise RuntimeError("X 认证令牌文件为空。")
         return token
 
     def _get_client(self):
@@ -70,7 +70,7 @@ class XUserCollector:
                 import tweepy
             except ImportError as exc:
                 raise RuntimeError(
-                    "tweepy is not installed. Install the tweepy package first."
+                    "未安装 tweepy，请先安装该依赖。"
                 ) from exc
             self.client_cls = tweepy.Client
         self.client = self.client_cls(
@@ -82,7 +82,7 @@ class XUserCollector:
     def _extract_username(self, source):
         source = str(source or "").strip()
         if not source:
-            raise RuntimeError("Missing X user source.")
+            raise RuntimeError("缺少 X 用户源。")
         if source.startswith("@"):
             source = source[1:]
 
@@ -93,17 +93,17 @@ class XUserCollector:
         if parsed.scheme:
             host = parsed.netloc.lower()
             if host not in {"x.com", "www.x.com", "twitter.com", "www.twitter.com"}:
-                raise RuntimeError(f"Invalid X user source: {source}")
+                raise RuntimeError(f"X 用户源无效：{source}")
             parts = [part for part in parsed.path.split("/") if part]
             if not parts or parts[0].lower() in X_RESERVED_PATHS:
-                raise RuntimeError(f"Invalid X user source: {source}")
+                raise RuntimeError(f"X 用户源无效：{source}")
             username = parts[0]
         else:
             username = source
 
         username = username.strip().lstrip("@")
         if not X_USERNAME_RE.match(username):
-            raise RuntimeError(f"Invalid X username: {username}")
+            raise RuntimeError(f"X 用户名无效：{username}")
         return username
 
     def normalize_user_source(self, source):
@@ -160,7 +160,7 @@ class XUserCollector:
 
     def fetch_user_posts(self, source, limit=None, keywords=None):
         if not app_config.platform_enabled("x"):
-            raise RuntimeError("X collection is disabled in the current configuration.")
+            raise RuntimeError("X 采集当前未启用。")
         limit = max(int(limit or app_config.platform_sync_limit("x")), 1)
         keywords = self.normalize_keywords(keywords)
         normalized_source = self.normalize_user_source(source)
@@ -174,15 +174,14 @@ class XUserCollector:
             )
         except Exception as exc:
             raise RuntimeError(
-                "Failed to load X user data. Check whether the bearer token is valid "
-                "and whether the user source is accessible."
+                "X 用户数据加载失败。请检查认证令牌是否有效，以及用户源是否可访问。"
             ) from exc
 
         user = getattr(user_response, "data", None)
         user_id = self._value(user, "id")
         if not user or not user_id:
             raise RuntimeError(
-                "X user is unavailable or inaccessible. Check whether the username is valid."
+                "X 用户不可用或无法访问，请检查用户名是否有效。"
             )
 
         entries = []
@@ -213,8 +212,7 @@ class XUserCollector:
                 )
             except Exception as exc:
                 raise RuntimeError(
-                    "Failed to load X posts. Check whether the bearer token has access "
-                    "to the user timeline endpoint and has remaining quota."
+                    "X 内容加载失败。请检查认证令牌是否可访问用户时间线接口，以及配额是否充足。"
                 ) from exc
 
             tweets = list(getattr(tweets_response, "data", None) or [])

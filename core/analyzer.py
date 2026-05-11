@@ -1,4 +1,5 @@
 import importlib.util
+import logging
 import re
 import unicodedata
 from threading import Lock
@@ -7,6 +8,9 @@ import cv2
 import numpy as np
 
 from core.config import app_config
+
+
+logger = logging.getLogger("core.analyzer")
 
 
 class AIProcessor:
@@ -120,7 +124,7 @@ class AIProcessor:
 
             if desired_mode == "qwen3_4b_int4_experimental":
                 raise RuntimeError(
-                    "Qwen3-Embedding-4B int4 experimental mode is reserved but not enabled in the current runtime."
+                    "Qwen3-Embedding-4B int4 实验模式已预留，但当前运行环境尚未启用。"
                 )
 
             self._reset_text_encoder()
@@ -242,10 +246,14 @@ class AIProcessor:
                     self.asr_model = model
                     self.asr_backend = "faster_whisper"
                     self.asr_model_size = model_size
-                    print(f"ASR backend=faster_whisper model={model_size}")
+                    logger.info("ASR 模型加载完成：backend=faster_whisper model=%s", model_size)
                     return model
                 except Exception as exc:
-                    print(f"Failed to load faster_whisper model={model_size}: {exc}")
+                    logger.warning(
+                        "ASR 候选模型加载失败：backend=faster_whisper model=%s error=%s",
+                        model_size,
+                        exc,
+                    )
                     self._reset_asr_model()
 
         if importlib.util.find_spec("whisper"):
@@ -257,12 +265,17 @@ class AIProcessor:
                     self.asr_model = model
                     self.asr_backend = "whisper"
                     self.asr_model_size = model_size
-                    print(f"ASR backend=whisper model={model_size}")
+                    logger.info("ASR 模型加载完成：backend=whisper model=%s", model_size)
                     return model
                 except Exception as exc:
-                    print(f"Failed to load whisper model={model_size}: {exc}")
+                    logger.warning(
+                        "ASR 候选模型加载失败：backend=whisper model=%s error=%s",
+                        model_size,
+                        exc,
+                    )
                     self._reset_asr_model()
 
+        logger.warning("ASR 模型不可用：未找到可加载的候选模型。")
         return None
 
     def clean_text(self, text):

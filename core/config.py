@@ -213,7 +213,7 @@ class AppConfig:
     def set_admin_password(self, password):
         cleaned = str(password or "")
         if len(cleaned) < 6:
-            raise ValueError("Admin password must be at least 6 characters.")
+            raise ValueError("管理员密码至少需要 6 个字符。")
 
         iterations = int(self.data.get("admin", {}).get("iterations") or 200_000)
         salt = secrets.token_hex(16)

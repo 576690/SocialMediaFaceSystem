@@ -1,5 +1,6 @@
 import argparse
 import json
+import logging
 import sys
 import time
 from datetime import datetime
@@ -19,6 +20,15 @@ from core.benchmark import extract_dataset_embeddings
 from core.benchmark import get_runtime_device_report
 from core.benchmark import run_benchmark_suite
 from core.benchmark import summarize_benchmark
+
+
+LOG_FORMAT = "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
+logging.basicConfig(level=logging.WARNING, format=LOG_FORMAT, datefmt="%Y-%m-%d %H:%M:%S")
+logger = logging.getLogger("benchmark")
+logger.setLevel(logging.INFO)
+logging.getLogger("core").setLevel(logging.INFO)
+for noisy_logger_name in ("faiss", "faiss.loader", "httpx", "httpcore", "urllib3"):
+    logging.getLogger(noisy_logger_name).setLevel(logging.WARNING)
 
 
 def _parse_csv_values(raw_value, caster):
@@ -129,7 +139,7 @@ def main():
         refresh_cache=args.refresh_cache,
     )
     if len(dataset_payload["embeddings"]) < 2:
-        parser.error("Not enough valid face embeddings were extracted from the dataset.")
+        parser.error("数据集中有效人脸向量不足，无法运行基准测试。")
 
     benchmark_payload = run_benchmark_suite(
         dataset_payload["embeddings"],
@@ -172,16 +182,15 @@ def main():
         quality_results=quality_payload["results"],
     )
 
-    print(
-        summarize_benchmark(
-            benchmark_payload["clustering_results"],
-            benchmark_payload["retrieval_results"],
-            dataset_payload["failures"],
-            benchmark_payload["elapsed_seconds"],
-            quality_results=quality_payload["results"],
-            recommended_face_quality=quality_payload["recommended_face_quality"],
-        )
+    summary = summarize_benchmark(
+        benchmark_payload["clustering_results"],
+        benchmark_payload["retrieval_results"],
+        dataset_payload["failures"],
+        benchmark_payload["elapsed_seconds"],
+        quality_results=quality_payload["results"],
+        recommended_face_quality=quality_payload["recommended_face_quality"],
     )
+    logger.info("基准测试完成：\n%s", summary)
     run_metadata.update(
         {
             "completed_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -196,12 +205,15 @@ def main():
         }
     )
     _write_benchmark_run(run_json_path, run_metadata)
-    print(f"embedding_cache: {cache_path}")
-    print(f"clustering_results: {exported['clustering']}")
-    print(f"retrieval_results: {exported['retrieval']}")
-    print(f"failed_samples: {exported['failures']}")
-    print(f"quality_filter_results: {exported['quality']}")
-    print(f"benchmark_run: {run_json_path}")
+    logger.info(
+        "结果文件：embedding_cache=%s clustering_results=%s retrieval_results=%s failed_samples=%s quality_filter_results=%s benchmark_run=%s",
+        cache_path,
+        exported["clustering"],
+        exported["retrieval"],
+        exported["failures"],
+        exported["quality"],
+        run_json_path,
+    )
 
 
 if __name__ == "__main__":

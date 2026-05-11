@@ -20,16 +20,16 @@ def _normalize_options(algorithm, metric):
     algorithm = (algorithm or "dbscan").lower()
     metric = (metric or "cosine").lower()
     if algorithm not in SUPPORTED_ALGORITHMS:
-        raise ValueError(f"Unsupported algorithm: {algorithm}")
+        raise ValueError(f"不支持的聚类算法：{algorithm}")
     if metric not in SUPPORTED_METRICS:
-        raise ValueError(f"Unsupported metric: {metric}")
+        raise ValueError(f"不支持的距离度量：{metric}")
     return algorithm, metric
 
 
 def normalize_cluster_mode(mode):
     mode = (mode or "incremental").lower()
     if mode not in SUPPORTED_CLUSTER_MODES:
-        raise ValueError(f"Unsupported clustering mode: {mode}")
+        raise ValueError(f"不支持的聚类模式：{mode}")
     return mode
 
 
@@ -55,7 +55,7 @@ def cluster_embeddings(embeddings, algorithm="dbscan", metric="cosine", eps=0.4,
         )
     else:
         if hdbscan is None:
-            raise RuntimeError("HDBSCAN is unavailable. Install the hdbscan package.")
+            raise RuntimeError("HDBSCAN 不可用，请安装 hdbscan 包。")
         if metric == "cosine":
             matrix = matrix.astype(np.float64, copy=False)
         model = hdbscan.HDBSCAN(
@@ -265,7 +265,7 @@ def _evaluate_embedding_retrieval_torch_cuda(embeddings, person_ids, metrics=Non
     import torch
 
     if not torch.cuda.is_available():
-        raise RuntimeError("Torch CUDA is unavailable.")
+        raise RuntimeError("Torch CUDA 不可用。")
 
     embeddings = np.asarray(embeddings, dtype=np.float32)
     if len(embeddings) < 3:
@@ -364,7 +364,7 @@ def _evaluate_embedding_retrieval_torch_cuda(embeddings, person_ids, metrics=Non
 def evaluate_embedding_retrieval(embeddings, person_ids, metrics=None, top_k=5, backend="numpy"):
     backend = (backend or "numpy").lower()
     if backend not in ("numpy", "torch-cuda", "auto"):
-        raise ValueError(f"Unsupported retrieval backend: {backend}")
+        raise ValueError(f"不支持的检索后端：{backend}")
 
     if backend in ("torch-cuda", "auto"):
         try:
@@ -492,7 +492,7 @@ def perform_clustering(
     if not records:
         return {
             "status": "success",
-            "message": "No face embeddings need clustering.",
+            "message": "没有需要聚类的人脸向量。",
             "clusters_count": 0,
             "total_faces": 0,
             "reassigned_faces": 0,
@@ -553,7 +553,7 @@ def perform_clustering(
         "reassigned_faces": reassigned_faces,
         "mode": mode,
         "snapshot_created": snapshot_created,
-        "message": f"Clustering finished with {summary['clusters_count']} clusters.",
+        "message": f"聚类完成，共生成 {summary['clusters_count']} 个簇。",
         "config": {
             "algorithm": algorithm,
             "metric": metric,
@@ -575,7 +575,7 @@ def evaluate_clustering(
         return {
             "status": "success",
             "results": [],
-            "message": "Not enough face embeddings for evaluation.",
+            "message": "人脸向量数量不足，无法评估聚类效果。",
         }
 
     embeddings = [record["embedding"] for record in records]
@@ -597,7 +597,7 @@ def compare_image_search_metrics(db_manager, top_k=5):
         return {
             "status": "success",
             "results": [],
-            "message": "Not enough labeled data for image search evaluation.",
+            "message": "已标注数据不足，无法评估以图搜图效果。",
         }
 
     embeddings = [record["embedding"] for record in records]

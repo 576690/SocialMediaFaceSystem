@@ -192,28 +192,28 @@ class VideoCollector:
         impersonate_status = self.last_bilibili_impersonate_status or {}
         if "Impersonate target" in message and "not available" in message:
             detail = impersonate_status.get("impersonate_reason") or (
-                "The runtime does not support the requested impersonate target."
+                "当前运行环境不支持请求的浏览器模拟目标。"
             )
             return (
-                "Bilibili download attempted to use browser impersonation, but the current environment "
-                f"does not support it. {detail} Install the optional impersonation dependency for a more stable setup."
+                "Bilibili 下载需要使用浏览器模拟，但当前环境不支持。"
+                f"{detail} 请安装可选的浏览器模拟依赖，以提升采集稳定性。"
             )
         if "HTTP Error 412" not in message and "Precondition Failed" not in message:
             return message
         if not app_config.bilibili_cookie_path.exists():
             return (
-                "Bilibili download failed with HTTP 412. "
-                "Missing Bilibili cookies file: storage/bilibili_cookies.txt"
+                "Bilibili 下载失败（HTTP 412）。"
+                "缺少 Bilibili Cookie 文件：storage/bilibili_cookies.txt"
             )
         if not impersonate_status.get("impersonate_enabled", True):
             return (
-                "Bilibili download failed with HTTP 412 while running in downgraded non-impersonate mode. "
-                "The current bilibili_cookies.txt may be expired or blocked; refresh the cookie file. "
-                "For a more stable setup, install the optional dependency required for impersonation support."
+                "Bilibili 下载失败（HTTP 412），当前处于未启用浏览器模拟的降级模式。"
+                "现有 bilibili_cookies.txt 可能已过期或被拦截，请刷新 Cookie 文件。"
+                "建议安装浏览器模拟所需的可选依赖，以提升采集稳定性。"
             )
         return (
-            "Bilibili download failed with HTTP 412. "
-            "The current bilibili_cookies.txt may be expired or blocked; refresh the cookie file and retry later."
+            "Bilibili 下载失败（HTTP 412）。"
+            "现有 bilibili_cookies.txt 可能已过期或被拦截，请刷新 Cookie 文件后重试。"
         )
 
     def _extract_info(self, url, platform, download=False, extra_opts=None):
@@ -256,7 +256,7 @@ class VideoCollector:
     ):
         platform = (platform or self.detect_platform(source_url)).lower()
         if not app_config.platform_enabled(platform):
-            raise RuntimeError(f"{platform} collection is disabled in the current configuration.")
+            raise RuntimeError(f"{platform} 采集当前未启用。")
         limit = limit or app_config.platform_sync_limit(platform)
         source_type = (source_type or "channel").lower()
         metadata = metadata or {}
@@ -315,10 +315,14 @@ class VideoCollector:
         if not url:
             return {}
 
+        platform = self.detect_platform(url)
+        if platform == "weibo":
+            return self.weibo_adapter.fetch_single_post(url)
+
         try:
             info, _ = self._extract_info(
                 url,
-                self.detect_platform(url),
+                platform,
                 download=False,
                 extra_opts={"quiet": True, "no_warnings": True},
             )
@@ -342,7 +346,7 @@ class VideoCollector:
             seen.add(image_url)
 
         return {
-            "platform": self.detect_platform(url),
+            "platform": platform,
             "external_id": info.get("id") or self.derive_external_id(url, url),
             "title": info.get("title") or "",
             "post_text": info.get("description") or info.get("title") or "",
@@ -352,16 +356,23 @@ class VideoCollector:
 
     def download_post_images(self, platform, external_id, image_urls, request_headers=None):
         saved_files = []
+        platform = (platform or "").lower()
         for index, image_url in enumerate(image_urls):
             parsed = urlparse(image_url)
             suffix = os.path.splitext(parsed.path)[1] or ".jpg"
             filename = f"{platform}_{external_id}_{index}{suffix}"
             target_path = self.content_dir / filename
+            headers = request_headers
+            if headers is None and platform == "weibo":
+                try:
+                    headers = self.get_platform_request_headers(platform, referer=image_url)
+                except Exception:
+                    headers = {}
 
             try:
                 response = requests.get(
                     image_url,
-                    headers=request_headers or {},
+                    headers=headers or {},
                     timeout=(
                         app_config.weibo_timeout_seconds
                         if platform == "weibo"

@@ -69,7 +69,7 @@
 <body class="min-h-screen">
   <section id="authScreen" class="flex min-h-screen items-center justify-center px-4 py-8">
     <div class="glass w-full max-w-xl rounded-3xl p-6 shadow-2xl">
-      <p class="ui text-xs uppercase tracking-[0.25em] text-teal-700">Face System</p>
+      <p class="ui text-xs uppercase tracking-[0.25em] text-teal-700">人脸检索系统</p>
       <h1 id="authTitle" class="ui mt-3 text-3xl font-bold">用户登录</h1>
       <p id="authHint" class="mt-2 text-sm text-slate-500">请输入管理员分配的账号和密码。</p>
       <div class="mt-6 space-y-3">
@@ -79,8 +79,8 @@
           class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none" placeholder="密码"
           autocomplete="current-password" onkeydown="if(event.key==='Enter'){submitAuth();}">
         <input id="authPasswordConfirm" type="password"
-          class="hidden w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none"
-          placeholder="再次输入密码" autocomplete="new-password" onkeydown="if(event.key==='Enter'){submitAuth();}">
+          class="hidden w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none" placeholder="再次输入密码"
+          autocomplete="new-password" onkeydown="if(event.key==='Enter'){submitAuth();}">
         <button id="btnAuthSubmit" onclick="submitAuth()" class="w-full rounded-2xl bg-slate-950 px-4 py-3 text-white">
           登录
         </button>
@@ -89,658 +89,668 @@
   </section>
 
   <div id="appShell" class="hidden">
-  <div id="sidebarBackdrop" onclick="toggleSidebar(false)" class="fixed inset-0 z-30 hidden bg-slate-950/45 lg:hidden">
-  </div>
-
-  <aside id="sidebar"
-    class="fixed inset-y-0 left-0 z-40 w-72 -translate-x-full overflow-y-auto bg-[var(--nav)] px-4 py-5 pb-8 text-white shadow-2xl transition-transform duration-200 lg:translate-x-0">
-    <div class="rounded-3xl bg-white/10 px-4 py-4">
-      <p class="ui text-xs uppercase tracking-[0.25em] text-teal-100">Face System</p>
-      <h1 class="ui mt-3 text-2xl font-bold leading-tight">社交媒体人脸数据采集与智能检索系统</h1>
-      <p id="adminStatusText" class="mt-4 rounded-full bg-white/10 px-3 py-2 text-xs text-teal-50">管理员状态加载中</p>
+    <div id="sidebarBackdrop" onclick="toggleSidebar(false)"
+      class="fixed inset-0 z-30 hidden bg-slate-950/45 lg:hidden">
     </div>
-    <nav class="mt-6 space-y-2">
-      <details class="nav-section" open>
-        <summary class="nav-section-title cursor-pointer rounded-2xl px-4 py-3 text-sm text-white/80">数据采集</summary>
-        <div class="mt-2 space-y-1 pl-3">
-          <button data-view="admin" data-admin-target="manual" onclick="switchView('admin'); switchAdminSubView('manual')"
-            class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
-            <span>手动导入</span><span>Import</span>
-          </button>
-          <button data-view="admin" data-admin-target="sources" onclick="switchView('admin'); switchAdminSubView('sources')"
-            class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
-            <span>添加账号监测</span><span>Monitor</span>
-          </button>
-        </div>
-      </details>
-      <details id="configNavGroup" class="nav-section hidden">
-        <summary class="nav-section-title cursor-pointer rounded-2xl px-4 py-3 text-sm text-white/80">参数管理</summary>
-        <div class="mt-2 space-y-1 pl-3">
-          <button data-view="admin" data-admin-target="config" onclick="switchView('admin'); switchAdminSubView('config')"
-            class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
-            <span>核心参数</span><span>Config</span>
-          </button>
-        </div>
-      </details>
-      <details class="nav-section">
-        <summary class="nav-section-title cursor-pointer rounded-2xl px-4 py-3 text-sm text-white/80">人物库</summary>
-        <div class="mt-2 space-y-1 pl-3">
-          <button data-view="people" onclick="switchView('people')"
-            class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
-            <span>人物库</span><span>People</span>
-          </button>
-        </div>
-      </details>
-      <details class="nav-section" open>
-        <summary class="nav-section-title cursor-pointer rounded-2xl px-4 py-3 text-sm text-white/80">智能检索</summary>
-        <div class="mt-2 space-y-1 pl-3">
-          <button data-view="text" onclick="switchView('text')"
-            class="nav-item active flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
-            <span>以文搜图</span><span>Text</span>
-          </button>
-          <button data-view="image" onclick="switchView('image')"
-            class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
-            <span>以图搜图</span><span>Image</span>
-          </button>
-        </div>
-      </details>
-      <details id="systemNavGroup" class="nav-section hidden">
-        <summary class="nav-section-title cursor-pointer rounded-2xl px-4 py-3 text-sm text-white/80">系统管理</summary>
-        <div class="mt-2 space-y-1 pl-3">
-          <button data-view="admin" data-admin-target="users" onclick="switchView('admin'); switchAdminSubView('users')"
-            class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
-            <span>账户管理</span><span>Users</span>
-          </button>
-          <button data-view="admin" data-admin-target="reset" onclick="switchView('admin'); switchAdminSubView('reset')"
-            class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
-            <span>系统重置</span><span>Reset</span>
-          </button>
-        </div>
-      </details>
-    </nav>
-  </aside>
 
-  <div class="min-h-screen lg:pl-72">
-    <header class="sticky top-0 z-20 border-b border-white/60 bg-white/70 px-4 py-4 backdrop-blur lg:px-8">
-      <div class="flex items-center justify-between gap-4">
-        <div class="flex items-center gap-3">
-          <button onclick="toggleSidebar(true)"
-            class="rounded-2xl bg-slate-950 px-3 py-2 text-sm text-white lg:hidden">菜单</button>
-          <div>
-            <p id="viewKicker" class="ui text-xs uppercase tracking-[0.25em] text-teal-700">Text Search</p>
-            <h2 id="viewTitle" class="ui text-2xl font-bold">以文搜图</h2>
-          </div>
-        </div>
-        <div class="flex items-center gap-3">
-          <span id="currentUserText" class="hidden text-sm text-slate-500"></span>
-          <button id="btnLogout" onclick="logoutAdmin()"
-            class="hidden rounded-2xl bg-slate-950 px-4 py-2 text-sm text-white">退出登录</button>
-        </div>
+    <aside id="sidebar"
+      class="fixed inset-y-0 left-0 z-40 w-72 -translate-x-full overflow-y-auto bg-[var(--nav)] px-4 py-5 pb-8 text-white shadow-2xl transition-transform duration-200 lg:translate-x-0">
+      <div class="rounded-3xl bg-white/10 px-4 py-4">
+        <p class="ui text-xs uppercase tracking-[0.25em] text-teal-100">人脸检索系统</p>
+        <h1 class="ui mt-3 text-2xl font-bold leading-tight">社交媒体人脸数据采集与智能检索系统</h1>
+        <p id="adminStatusText" class="mt-4 rounded-full bg-white/10 px-3 py-2 text-xs text-teal-50">管理员状态加载中</p>
       </div>
-    </header>
+      <nav class="mt-6 space-y-2">
+        <details class="nav-section" open>
+          <summary class="nav-section-title cursor-pointer rounded-2xl px-4 py-3 text-sm text-white/80">数据采集</summary>
+          <div class="mt-2 space-y-1 pl-3">
+            <button data-view="admin" data-admin-target="manual"
+              onclick="switchView('admin'); switchAdminSubView('manual')"
+              class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
+              <span>手动导入</span><span>导入</span>
+            </button>
+            <button data-view="admin" data-admin-target="sources"
+              onclick="switchView('admin'); switchAdminSubView('sources')"
+              class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
+              <span>添加账号监测</span><span>监测</span>
+            </button>
+          </div>
+        </details>
+        <details id="configNavGroup" class="nav-section hidden">
+          <summary class="nav-section-title cursor-pointer rounded-2xl px-4 py-3 text-sm text-white/80">参数管理</summary>
+          <div class="mt-2 space-y-1 pl-3">
+            <button data-view="admin" data-admin-target="config"
+              onclick="switchView('admin'); switchAdminSubView('config')"
+              class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
+              <span>核心参数</span><span>配置</span>
+            </button>
+          </div>
+        </details>
+        <details class="nav-section">
+          <summary class="nav-section-title cursor-pointer rounded-2xl px-4 py-3 text-sm text-white/80">人物库</summary>
+          <div class="mt-2 space-y-1 pl-3">
+            <button data-view="people" onclick="switchView('people')"
+              class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
+              <span>人物库</span><span>人物</span>
+            </button>
+          </div>
+        </details>
+        <details class="nav-section" open>
+          <summary class="nav-section-title cursor-pointer rounded-2xl px-4 py-3 text-sm text-white/80">智能检索</summary>
+          <div class="mt-2 space-y-1 pl-3">
+            <button data-view="text" onclick="switchView('text')"
+              class="nav-item active flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
+              <span>以文搜图</span><span>文本</span>
+            </button>
+            <button data-view="image" onclick="switchView('image')"
+              class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
+              <span>以图搜图</span><span>图片</span>
+            </button>
+          </div>
+        </details>
+        <details id="systemNavGroup" class="nav-section hidden">
+          <summary class="nav-section-title cursor-pointer rounded-2xl px-4 py-3 text-sm text-white/80">系统管理</summary>
+          <div class="mt-2 space-y-1 pl-3">
+            <button data-view="admin" data-admin-target="users"
+              onclick="switchView('admin'); switchAdminSubView('users')"
+              class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
+              <span>账户管理</span><span>账户</span>
+            </button>
+            <button data-view="admin" data-admin-target="reset"
+              onclick="switchView('admin'); switchAdminSubView('reset')"
+              class="nav-item flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left text-sm text-white/80">
+              <span>系统重置</span><span>重置</span>
+            </button>
+          </div>
+        </details>
+      </nav>
+    </aside>
 
-    <main class="px-4 py-6 lg:px-8">
-      <section id="view-text" class="view space-y-6">
-        <div class="glass rounded-3xl p-6">
-          <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+    <div class="min-h-screen lg:pl-72">
+      <header class="sticky top-0 z-20 border-b border-white/60 bg-white/70 px-4 py-4 backdrop-blur lg:px-8">
+        <div class="flex items-center justify-between gap-4">
+          <div class="flex items-center gap-3">
+            <button onclick="toggleSidebar(true)"
+              class="rounded-2xl bg-slate-950 px-3 py-2 text-sm text-white lg:hidden">菜单</button>
             <div>
-              <h2 class="ui text-2xl font-bold">以文搜图</h2>
-              <p class="mt-2 text-sm text-slate-500">输入人物、事件、场景的描述，检索融合后的视觉、语音/字幕和正文信息。</p>
+              <p id="viewKicker" class="ui text-xs uppercase tracking-[0.25em] text-teal-700">文本检索</p>
+              <h2 id="viewTitle" class="ui text-2xl font-bold">以文搜图</h2>
             </div>
-            <div id="textResultCount" class="text-sm text-slate-500">0 条结果</div>
           </div>
-          <div class="mt-5 flex flex-col gap-3 md:flex-row">
-            <input id="textQuery" class="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none"
-              placeholder="例如：发布会现场、某位人物、红毯合影" onkeydown="if(event.key==='Enter'){searchText();}">
-            <button id="btnTextSearch" onclick="searchText()"
-              class="rounded-2xl bg-amber-600 px-5 py-3 text-white">文本搜索</button>
+          <div class="flex items-center gap-3">
+            <span id="currentUserText" class="hidden text-sm text-slate-500"></span>
+            <button id="btnLogout" onclick="logoutAdmin()"
+              class="hidden rounded-2xl bg-slate-950 px-4 py-2 text-sm text-white">退出登录</button>
           </div>
         </div>
-        <div class="glass rounded-3xl p-6">
-          <div class="flex items-center justify-between">
-            <h3 class="ui text-xl font-bold">搜索结果</h3>
-            <button onclick="renderResults([], 'textResults', 'textResultCount')"
-              class="text-sm text-slate-500">清空</button>
-          </div>
-          <div id="textResults" class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"></div>
-        </div>
-      </section>
+      </header>
 
-      <section id="view-image" class="view hidden space-y-6">
-        <div class="glass rounded-3xl p-6">
-          <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-            <div>
-              <h2 class="ui text-2xl font-bold">以图搜图</h2>
-              <p class="mt-2 text-sm text-slate-500">上传含有人脸的图片，在人脸库中查找相似记录。</p>
-            </div>
-            <div id="imageResultCount" class="text-sm text-slate-500">0 条结果</div>
-          </div>
-          <div class="mt-5 grid gap-3 md:grid-cols-[220px_1fr_160px]">
-            <select id="imageMetric" class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-              <option value="cosine">cosine</option>
-              <option value="euclidean">euclidean</option>
-            </select>
-            <input id="fileInput" type="file" accept="image/*"
-              class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-            <button id="btnImageSearch" onclick="searchImage()"
-              class="rounded-2xl bg-indigo-700 px-5 py-3 text-white">上传并搜索</button>
-          </div>
-        </div>
-        <div class="glass rounded-3xl p-6">
-          <div class="flex items-center justify-between">
-            <h3 class="ui text-xl font-bold">搜索结果</h3>
-            <button onclick="renderResults([], 'imageResults', 'imageResultCount')"
-              class="text-sm text-slate-500">清空</button>
-          </div>
-          <div id="imageResults" class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"></div>
-        </div>
-      </section>
-
-      <section id="view-people" class="view hidden space-y-6">
-        <div class="glass rounded-3xl p-6">
-          <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h2 class="ui text-2xl font-bold">人物库</h2>
-              <p id="peopleModeHint" class="mt-2 text-sm text-slate-500">普通用户可查看人物和时间线；管理员可重命名、拖拽归类和合并。</p>
-            </div>
-            <button onclick="loadPeople()" class="rounded-2xl bg-teal-700 px-4 py-3 text-white">刷新人物库</button>
-          </div>
-          <div id="peopleGrid" class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5"></div>
-          <div class="mt-8 border-t border-slate-200 pt-6">
-            <div class="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-              <h3 class="ui text-base font-bold">未分配人脸</h3>
-              <span id="unassignedHint" class="text-sm text-slate-500">管理员登录后可拖拽到人物卡片完成归类</span>
-            </div>
-            <div id="unassignedGrid"
-              class="flex min-h-[88px] flex-wrap gap-3 rounded-3xl border border-dashed border-slate-300 bg-white/60 p-4">
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="view-admin" class="view hidden space-y-6">
-        <div id="adminGate" class="glass rounded-3xl p-6"></div>
-
-        <div id="adminPanel" class="hidden space-y-6">
-          <div data-admin-subview="manual" class="admin-subview grid gap-6 xl:grid-cols-2">
-            <div class="glass rounded-3xl p-6">
-              <h2 class="ui text-xl font-bold">单链接采集</h2>
-              <p class="mt-2 text-sm text-slate-500">下载视频并自动使用字幕或离线语音识别。</p>
-              <div class="mt-4 space-y-3">
-                <input id="singleUrl" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none"
-                  placeholder="输入视频链接">
-                <button id="btnCollectSingle" onclick="collectSingle()"
-                  class="w-full rounded-2xl bg-slate-950 px-4 py-3 text-white">开始采集</button>
+      <main class="px-4 py-6 lg:px-8">
+        <section id="view-text" class="view space-y-6">
+          <div class="glass rounded-3xl p-6">
+            <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <div>
+                <h2 class="ui text-2xl font-bold">以文搜图</h2>
+                <p class="mt-2 text-sm text-slate-500">输入人物、事件、场景的描述，检索融合后的视觉、语音/字幕和正文信息。</p>
               </div>
+              <div id="textResultCount" class="text-sm text-slate-500">0 条结果</div>
             </div>
-            <div class="glass rounded-3xl p-6">
-              <h2 class="ui text-xl font-bold">图文导入</h2>
-              <p class="mt-2 text-sm text-slate-500">图片进入人脸流水线，正文参与语义融合。</p>
-              <div class="mt-4 space-y-3">
-                <input id="postUrl" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none"
-                  placeholder="微博链接，可选">
-                <textarea id="postText" rows="3"
-                  class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none"
-                  placeholder="正文文本，可选"></textarea>
-                <textarea id="postImages" rows="4"
-                  class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none"
-                  placeholder="图片 URL，每行一个"></textarea>
-                <button id="btnImportPost" onclick="importPost()"
-                  class="w-full rounded-2xl bg-sky-700 px-4 py-3 text-white">导入图文</button>
+            <div class="mt-5 flex flex-col gap-3 md:flex-row">
+              <input id="textQuery" class="flex-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none"
+                placeholder="例如：发布会现场、某位人物、红毯合影" onkeydown="if(event.key==='Enter'){searchText();}">
+              <button id="btnTextSearch" onclick="searchText()"
+                class="rounded-2xl bg-amber-600 px-5 py-3 text-white">文本搜索</button>
+            </div>
+          </div>
+          <div class="glass rounded-3xl p-6">
+            <div class="flex items-center justify-between">
+              <h3 class="ui text-xl font-bold">搜索结果</h3>
+              <button onclick="renderResults([], 'textResults', 'textResultCount')"
+                class="text-sm text-slate-500">清空</button>
+            </div>
+            <div id="textResults" class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"></div>
+          </div>
+        </section>
+
+        <section id="view-image" class="view hidden space-y-6">
+          <div class="glass rounded-3xl p-6">
+            <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <div>
+                <h2 class="ui text-2xl font-bold">以图搜图</h2>
+                <p class="mt-2 text-sm text-slate-500">上传含有人脸的图片，在人脸库中查找相似记录。</p>
+              </div>
+              <div id="imageResultCount" class="text-sm text-slate-500">0 条结果</div>
+            </div>
+            <div class="mt-5 grid gap-3 md:grid-cols-[220px_1fr_160px]">
+              <select id="imageMetric" class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                <option value="cosine">余弦相似度</option>
+                <option value="euclidean">欧氏距离</option>
+              </select>
+              <input id="fileInput" type="file" accept="image/*"
+                class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+              <button id="btnImageSearch" onclick="searchImage()"
+                class="rounded-2xl bg-indigo-700 px-5 py-3 text-white">上传并搜索</button>
+            </div>
+          </div>
+          <div class="glass rounded-3xl p-6">
+            <div class="flex items-center justify-between">
+              <h3 class="ui text-xl font-bold">搜索结果</h3>
+              <button onclick="renderResults([], 'imageResults', 'imageResultCount')"
+                class="text-sm text-slate-500">清空</button>
+            </div>
+            <div id="imageResults" class="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4"></div>
+          </div>
+        </section>
+
+        <section id="view-people" class="view hidden space-y-6">
+          <div class="glass rounded-3xl p-6">
+            <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h2 class="ui text-2xl font-bold">人物库</h2>
+                <p id="peopleModeHint" class="mt-2 text-sm text-slate-500">普通用户可查看人物和时间线；管理员可重命名、拖拽归类和合并。</p>
+              </div>
+              <button onclick="loadPeople()" class="rounded-2xl bg-teal-700 px-4 py-3 text-white">刷新人物库</button>
+            </div>
+            <div id="peopleGrid" class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5"></div>
+            <div class="mt-8 border-t border-slate-200 pt-6">
+              <div class="mb-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <h3 class="ui text-base font-bold">未聚类人脸</h3>
+                <span id="unassignedHint" class="text-sm text-slate-500">管理员登录后可拖拽到人物卡片完成归类</span>
+              </div>
+              <div id="unassignedGrid"
+                class="flex min-h-[88px] flex-wrap gap-3 rounded-3xl border border-dashed border-slate-300 bg-white/60 p-4">
               </div>
             </div>
           </div>
+        </section>
 
-          <div data-admin-subview="sources" class="admin-subview hidden grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-            <div class="glass rounded-3xl p-6">
-              <h2 class="ui text-xl font-bold">账号同步</h2>
-              <p class="mt-2 text-sm text-slate-500">登记频道、账号或微博用户源，支持关键词过滤。</p>
-              <div class="mt-4 space-y-3">
-                <input id="sourceUrl" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none"
-                  placeholder="输入频道链接或微博用户链接 / ID">
-                <div class="grid grid-cols-2 gap-3">
-                  <select id="sourcePlatform" class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                    <option value="bilibili">bilibili</option>
-                    <option value="youtube">youtube</option>
-                    <option value="weibo">weibo</option>
-                  </select>
-                  <input id="sourceLimit" type="number" min="1" max="100" value="10"
-                    class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+        <section id="view-admin" class="view hidden space-y-6">
+          <div id="adminGate" class="glass rounded-3xl p-6"></div>
+
+          <div id="adminPanel" class="hidden space-y-6">
+            <div data-admin-subview="manual" class="admin-subview grid gap-6 xl:grid-cols-2">
+              <div class="glass rounded-3xl p-6">
+                <h2 class="ui text-xl font-bold">单链接采集</h2>
+                <p class="mt-2 text-sm text-slate-500">视频链接按视频采集；微博图文链接会自动导入图片和正文。</p>
+                <div class="mt-4 space-y-3">
+                  <input id="singleUrl"
+                    class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none"
+                    placeholder="输入视频或微博图文链接">
+                  <button id="btnCollectSingle" onclick="collectSingle()"
+                    class="w-full rounded-2xl bg-slate-950 px-4 py-3 text-white">开始采集</button>
                 </div>
-                <textarea id="sourceKeywords" rows="3"
-                  class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none"
-                  placeholder="微博关键词，可选。逗号或换行分隔。"></textarea>
-                <button id="btnSyncSource" onclick="syncSource()"
-                  class="w-full rounded-2xl bg-teal-700 px-4 py-3 text-white">同步源</button>
+              </div>
+              <div class="glass rounded-3xl p-6">
+                <h2 class="ui text-xl font-bold">图文导入</h2>
+                <p class="mt-2 text-sm text-slate-500">微博链接或图片 URL 二选一；图片进入人脸流水线，正文参与语义融合。</p>
+                <div class="mt-4 space-y-3">
+                  <input id="postUrl" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none"
+                    placeholder="微博图文链接，可选">
+                  <textarea id="postText" rows="3"
+                    class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none"
+                    placeholder="正文文本，可选"></textarea>
+                  <textarea id="postImages" rows="4"
+                    class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none"
+                    placeholder="图片 URL，每行一个"></textarea>
+                  <button id="btnImportPost" onclick="importPost()"
+                    class="w-full rounded-2xl bg-sky-700 px-4 py-3 text-white">导入图文</button>
+                </div>
               </div>
             </div>
-            <div class="glass rounded-3xl p-6">
-              <h2 class="ui text-xl font-bold">已登记采集源</h2>
-              <p class="mt-2 text-sm text-slate-500">管理已登记的采集源，可仅删除登记，也可连同关联数据清理。</p>
-              <div id="sourceList" class="mt-5 grid gap-4"></div>
 
-              <div data-admin-only="true" class="mt-6 rounded-3xl bg-white/70 p-4">
-                <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <h3 class="ui font-bold">来源适配器</h3>
-                    <p class="mt-1 text-xs text-slate-500">上传 JSON/YAML 配置，启用服务器本地适配器模块。</p>
+            <div data-admin-subview="sources" class="admin-subview hidden grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+              <div class="glass rounded-3xl p-6">
+                <h2 class="ui text-xl font-bold">账号同步</h2>
+                <p class="mt-2 text-sm text-slate-500">登记频道、账号或微博用户源，支持关键词过滤。</p>
+                <div class="mt-4 space-y-3">
+                  <input id="sourceUrl"
+                    class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none"
+                    placeholder="输入频道链接或微博用户链接 / ID">
+                  <div class="grid grid-cols-2 gap-3">
+                    <select id="sourcePlatform" class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                      <option value="bilibili">Bilibili</option>
+                      <option value="youtube">YouTube</option>
+                      <option value="weibo">微博</option>
+                    </select>
+                    <input id="sourceLimit" type="number" min="1" max="100" value="10"
+                      class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
                   </div>
-                  <button id="btnUploadSourceAdapter" onclick="uploadSourceAdapterConfig()"
-                    class="rounded-2xl bg-slate-950 px-4 py-2 text-sm text-white">上传配置</button>
+                  <textarea id="sourceKeywords" rows="3"
+                    class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none"
+                    placeholder="微博关键词，可选。逗号或换行分隔。"></textarea>
+                  <button id="btnSyncSource" onclick="syncSource()"
+                    class="w-full rounded-2xl bg-teal-700 px-4 py-3 text-white">同步源</button>
                 </div>
-                <input id="sourceAdapterConfigFile" type="file" accept=".json,.yaml,.yml"
-                  class="mt-3 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
-                <div id="sourceAdapterList" class="mt-4 grid gap-3"></div>
               </div>
-            </div>
-          </div>
+              <div class="glass rounded-3xl p-6">
+                <h2 class="ui text-xl font-bold">已登记采集源</h2>
+                <p class="mt-2 text-sm text-slate-500">管理已登记的采集源，可仅删除登记，也可连同关联数据清理。</p>
+                <div id="sourceList" class="mt-5 grid gap-4"></div>
 
-          <div data-admin-subview="config" class="admin-subview hidden">
-            <div class="glass rounded-3xl p-6">
-              <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <h2 class="ui text-xl font-bold">核心参数配置</h2>
-                  <p class="mt-2 text-sm text-slate-500">保存后影响后续采集、检索和聚类，不会重写已入库的人脸数据。</p>
-                </div>
-                <button id="btnSaveSystemConfig" onclick="saveSystemConfig()"
-                  class="rounded-2xl bg-slate-950 px-4 py-3 text-white">保存配置</button>
-              </div>
-
-              <div class="mt-5 space-y-4">
-                <div class="rounded-3xl bg-white/70 p-3">
-                  <div class="flex gap-2 overflow-x-auto pb-1">
-                    <button type="button" data-config-subview-tab="collection"
-                      onclick="switchConfigSubView('collection')"
-                      class="config-subnav-item active shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600">
-                      采集参数
-                    </button>
-                    <button type="button" data-config-subview-tab="search" onclick="switchConfigSubView('search')"
-                      class="config-subnav-item shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600">
-                      检索参数
-                    </button>
-                    <button type="button" data-config-subview-tab="prompt" onclick="switchConfigSubView('prompt')"
-                      class="config-subnav-item shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600">
-                      Prompt 配置
-                    </button>
-                    <button type="button" data-config-subview-tab="cluster" onclick="switchConfigSubView('cluster')"
-                      class="config-subnav-item shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600">
-                      聚类参数
-                    </button>
-                    <button type="button" data-config-subview-tab="face" onclick="switchConfigSubView('face')"
-                      class="config-subnav-item shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600">
-                      人脸过滤
-                    </button>
-                  </div>
-                </div>
-
-                <div data-config-subview="collection" class="config-subview rounded-3xl bg-white/70 p-4">
-                  <h3 class="ui font-bold">采集参数</h3>
-                  <div class="hidden">
-                    <label class="text-sm text-slate-600">抽帧间隔秒
-                      <input id="configFrameSample" type="number" min="0.2" max="30" step="0.1"
-                        class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                    </label>
-                    <label class="text-sm text-slate-600">默认同步数
-                      <input id="configSourceLimit" type="number" min="1" max="100"
-                        class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                    </label>
-                    <label class="text-sm text-slate-600">微博同步数
-                      <input id="configWeiboLimit" type="number" min="1" max="100"
-                        class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                    </label>
-                    <label
-                      class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">
-                      启用微博 Cookie
-                      <input id="configWeiboCookieEnabled" type="checkbox" class="h-4 w-4">
-                    </label>
-                    <label class="text-sm text-slate-600">微博超时秒
-                      <input id="configWeiboTimeout" type="number" min="5" max="120"
-                        class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                    </label>
-                    <label class="text-sm text-slate-600">微博重试次数
-                      <input id="configWeiboRetry" type="number" min="1" max="10"
-                        class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                    </label>
-                  </div>
-                  <div class="mt-3 grid gap-3 md:grid-cols-3">
-                    <label class="text-sm text-slate-600">抽帧间隔秒
-                      <input id="configFrameSampleVisible" type="number" min="0.2" max="30" step="0.1"
-                        class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                    </label>
-                  </div>
-                  <div class="mt-4 grid gap-3 lg:grid-cols-2" id="collectionPlatformConfigGrid">
-                    <section class="rounded-2xl border border-slate-200 bg-white/80 p-4">
-                      <div class="flex items-center justify-between gap-3">
-                        <h4 class="text-sm font-semibold text-slate-800">微博</h4>
-                        <label class="flex items-center gap-2 text-sm text-slate-600">启用
-                          <input id="configPlatformWeiboEnabled" type="checkbox" class="h-4 w-4">
-                        </label>
-                      </div>
-                      <div class="mt-3 grid gap-3 sm:grid-cols-2">
-                        <label
-                          class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">启用
-                          Cookie
-                          <input id="configPlatformWeiboAuth" type="checkbox" class="h-4 w-4">
-                        </label>
-                        <label class="text-sm text-slate-600">同步数量
-                          <input id="configPlatformWeiboLimit" type="number" min="1" max="100"
-                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">同步间隔分钟
-                          <input id="configPlatformWeiboInterval" type="number" min="0"
-                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">超时秒
-                          <input id="configPlatformWeiboTimeout" type="number" min="5" max="120"
-                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">重试次数
-                          <input id="configPlatformWeiboRetry" type="number" min="1" max="10"
-                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                      </div>
-                    </section>
-                    <section class="rounded-2xl border border-slate-200 bg-white/80 p-4">
-                      <div class="flex items-center justify-between gap-3">
-                        <h4 class="text-sm font-semibold text-slate-800">Bilibili</h4>
-                        <label class="flex items-center gap-2 text-sm text-slate-600">启用
-                          <input id="configPlatformBilibiliEnabled" type="checkbox" class="h-4 w-4">
-                        </label>
-                      </div>
-                      <div class="mt-3 grid gap-3 sm:grid-cols-2">
-                        <label
-                          class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">启用
-                          Cookie
-                          <input id="configPlatformBilibiliAuth" type="checkbox" class="h-4 w-4">
-                        </label>
-                        <label class="text-sm text-slate-600">同步数量
-                          <input id="configPlatformBilibiliLimit" type="number" min="1" max="100"
-                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">同步间隔分钟
-                          <input id="configPlatformBilibiliInterval" type="number" min="0"
-                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">超时秒
-                          <input id="configPlatformBilibiliTimeout" type="number" min="5" max="120"
-                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">重试次数
-                          <input id="configPlatformBilibiliRetry" type="number" min="1" max="10"
-                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">Impersonate
-                          <input id="configPlatformBilibiliImpersonate" type="text"
-                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600 sm:col-span-2">Referer
-                          <input id="configPlatformBilibiliReferer" type="text"
-                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                      </div>
-                    </section>
-                    <section class="rounded-2xl border border-slate-200 bg-white/80 p-4">
-                      <div class="flex items-center justify-between gap-3">
-                        <h4 class="text-sm font-semibold text-slate-800">YouTube</h4>
-                        <label class="flex items-center gap-2 text-sm text-slate-600">启用
-                          <input id="configPlatformYoutubeEnabled" type="checkbox" class="h-4 w-4">
-                        </label>
-                      </div>
-                      <div class="mt-3 grid gap-3 sm:grid-cols-2">
-                        <label
-                          class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">启用
-                          Cookie
-                          <input id="configPlatformYoutubeAuth" type="checkbox" class="h-4 w-4">
-                        </label>
-                        <label class="text-sm text-slate-600">同步数量
-                          <input id="configPlatformYoutubeLimit" type="number" min="1" max="100"
-                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">同步间隔分钟
-                          <input id="configPlatformYoutubeInterval" type="number" min="0"
-                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">超时秒
-                          <input id="configPlatformYoutubeTimeout" type="number" min="5" max="120"
-                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">重试次数
-                          <input id="configPlatformYoutubeRetry" type="number" min="1" max="10"
-                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                      </div>
-                    </section>
-                    <section class="rounded-2xl border border-slate-200 bg-white/80 p-4">
-                      <div class="flex items-center justify-between gap-3">
-                        <h4 class="text-sm font-semibold text-slate-800">X</h4>
-                        <label class="flex items-center gap-2 text-sm text-slate-600">启用
-                          <input id="configPlatformXEnabled" type="checkbox" class="h-4 w-4">
-                        </label>
-                      </div>
-                      <div class="mt-3 grid gap-3 sm:grid-cols-2">
-                        <label
-                          class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">启用认证令牌
-                          <input id="configPlatformXAuth" type="checkbox" class="h-4 w-4">
-                        </label>
-                        <label class="text-sm text-slate-600">同步数量
-                          <input id="configPlatformXLimit" type="number" min="1" max="100"
-                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">同步间隔分钟
-                          <input id="configPlatformXInterval" type="number" min="0"
-                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">超时秒
-                          <input id="configPlatformXTimeout" type="number" min="5" max="120"
-                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">重试次数
-                          <input id="configPlatformXRetry" type="number" min="1" max="10"
-                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                      </div>
-                    </section>
-                    <section class="rounded-2xl border border-slate-200 bg-white/80 p-4 lg:col-span-2">
-                      <div class="flex items-center justify-between gap-3">
-                        <h4 class="text-sm font-semibold text-slate-800">通用链接</h4>
-                        <label class="flex items-center gap-2 text-sm text-slate-600">启用
-                          <input id="configPlatformGenericEnabled" type="checkbox" class="h-4 w-4">
-                        </label>
-                      </div>
-                      <div class="mt-3 grid gap-3 sm:grid-cols-4">
-                        <label class="text-sm text-slate-600">同步数量
-                          <input id="configPlatformGenericLimit" type="number" min="1" max="100"
-                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">同步间隔分钟
-                          <input id="configPlatformGenericInterval" type="number" min="0"
-                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">超时秒
-                          <input id="configPlatformGenericTimeout" type="number" min="5" max="120"
-                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                        <label class="text-sm text-slate-600">重试次数
-                          <input id="configPlatformGenericRetry" type="number" min="1" max="10"
-                            class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                        </label>
-                      </div>
-                    </section>
-                  </div>
-                </div>
-
-                <div data-config-subview="search" class="config-subview hidden rounded-3xl bg-white/70 p-4">
-                  <h3 class="ui font-bold">检索参数</h3>
-                  <div class="mt-3 grid gap-3 md:grid-cols-3">
-                    <label class="text-sm text-slate-600">文本阈值
-                      <input id="configTextThreshold" type="number" min="0" max="1" step="0.01"
-                        class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                    </label>
-                    <label class="text-sm text-slate-600">图片阈值
-                      <input id="configImageThreshold" type="number" min="0" max="1" step="0.01"
-                        class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                    </label>
-                    <label class="text-sm text-slate-600">文本 Top K
-                      <input id="configTextTopK" type="number" min="1" max="100"
-                        class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                    </label>
-                    <label class="text-sm text-slate-600">图片 Top K
-                      <input id="configImageTopK" type="number" min="1" max="100"
-                        class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                    </label>
-                  </div>
-                </div>
-
-                <div data-config-subview="prompt" class="config-subview hidden rounded-3xl bg-white/70 p-4">
-                  <h3 class="ui font-bold">Prompt 配置</h3>
-                  <div class="mt-3 grid gap-3 md:grid-cols-3">
-                    <label class="text-sm text-slate-600">语义文档风格
-                      <select id="configSemanticCorpusStyle"
-                        class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2">
-                        <option value="structured_zh">structured_zh</option>
-                      </select>
-                    </label>
-                    <label class="text-sm text-slate-600">Caption 风格
-                      <select id="configCaptionStyle"
-                        class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2">
-                        <option value="retrieval_keywords">retrieval_keywords</option>
-                        <option value="detailed_caption">detailed_caption</option>
-                      </select>
-                    </label>
-                    <label class="text-sm text-slate-600">Caption 语言
-                      <select id="configCaptionLanguage"
-                        class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2">
-                        <option value="zh">zh</option>
-                        <option value="en">en</option>
-                      </select>
-                    </label>
-                    <label
-                      class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">
-                      启用 OCR 线索
-                      <input id="configCaptionIncludeOcrHint" type="checkbox" class="h-4 w-4">
-                    </label>
-                    <label class="text-sm text-slate-600 md:col-span-2">ASR 初始提示词
-                      <textarea id="configAsrInitialPrompt" rows="3"
-                        class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none"
-                        placeholder="用于提高中文社交媒体视频里的人名、品牌名和活动名识别准确率"></textarea>
-                    </label>
-                    <label class="text-sm text-slate-600 md:col-span-3">ASR 热词
-                      <textarea id="configAsrHotwords" rows="3"
-                        class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none"
-                        placeholder="每行一个或使用逗号分隔，例如：直播，发布会，品牌"></textarea>
-                    </label>
-                  </div>
-                </div>
-
-                <div data-config-subview="cluster" class="config-subview hidden rounded-3xl bg-white/70 p-4">
+                <div data-admin-only="true" class="mt-6 rounded-3xl bg-white/70 p-4">
                   <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>
-                      <h3 class="ui font-bold">聚类参数</h3>
-                      <div id="clusterConfigSummary" class="mt-2 text-sm text-slate-500"></div>
+                      <h3 class="ui font-bold">来源适配器</h3>
+                      <p class="mt-1 text-xs text-slate-500">上传 JSON/YAML 配置，启用服务器本地适配器模块。</p>
                     </div>
-                    <div class="flex gap-2">
-                      <button id="btnClusterRun" onclick="openClusterModeModal()"
-                        class="rounded-2xl bg-slate-950 px-4 py-2 text-sm text-white">运行聚类</button>
-                      <button id="btnClusterRollback" onclick="rollbackClustering()"
-                        class="rounded-2xl bg-slate-200 px-4 py-2 text-sm text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-                        disabled>回退</button>
+                    <button id="btnUploadSourceAdapter" onclick="uploadSourceAdapterConfig()"
+                      class="rounded-2xl bg-slate-950 px-4 py-2 text-sm text-white">上传配置</button>
+                  </div>
+                  <input id="sourceAdapterConfigFile" type="file" accept=".json,.yaml,.yml"
+                    class="mt-3 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">
+                  <div id="sourceAdapterList" class="mt-4 grid gap-3"></div>
+                </div>
+              </div>
+            </div>
+
+            <div data-admin-subview="config" class="admin-subview hidden">
+              <div class="glass rounded-3xl p-6">
+                <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <h2 class="ui text-xl font-bold">核心参数配置</h2>
+                    <p class="mt-2 text-sm text-slate-500">保存后影响后续采集、检索和聚类，不会重写已入库的人脸数据。</p>
+                  </div>
+                  <button id="btnSaveSystemConfig" onclick="saveSystemConfig()"
+                    class="rounded-2xl bg-slate-950 px-4 py-3 text-white">保存配置</button>
+                </div>
+
+                <div class="mt-5 space-y-4">
+                  <div class="rounded-3xl bg-white/70 p-3">
+                    <div class="flex gap-2 overflow-x-auto pb-1">
+                      <button type="button" data-config-subview-tab="collection"
+                        onclick="switchConfigSubView('collection')"
+                        class="config-subnav-item active shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600">
+                        采集参数
+                      </button>
+                      <button type="button" data-config-subview-tab="search" onclick="switchConfigSubView('search')"
+                        class="config-subnav-item shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600">
+                        检索参数
+                      </button>
+                      <button type="button" data-config-subview-tab="prompt" onclick="switchConfigSubView('prompt')"
+                        class="config-subnav-item shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600">
+                        提示词配置
+                      </button>
+                      <button type="button" data-config-subview-tab="cluster" onclick="switchConfigSubView('cluster')"
+                        class="config-subnav-item shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600">
+                        聚类参数
+                      </button>
+                      <button type="button" data-config-subview-tab="face" onclick="switchConfigSubView('face')"
+                        class="config-subnav-item shrink-0 rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-600">
+                        人脸过滤
+                      </button>
                     </div>
                   </div>
-                  <div class="mt-3 grid gap-3 md:grid-cols-3">
-                    <select id="clusterAlgorithm" class="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                      <option value="dbscan">DBSCAN</option>
-                      <option value="hdbscan">HDBSCAN</option>
-                      <option value="optics">OPTICS</option>
-                    </select>
-                    <select id="clusterMetric" class="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                      <option value="cosine">cosine</option>
-                      <option value="euclidean">euclidean</option>
-                    </select>
-                    <input id="clusterEps" type="number" min="0.01" max="5" step="0.05"
-                      class="rounded-xl border border-slate-200 bg-white px-3 py-2">
-                    <input id="clusterMinSamples" type="number" min="2" max="50"
-                      class="rounded-xl border border-slate-200 bg-white px-3 py-2">
+
+                  <div data-config-subview="collection" class="config-subview rounded-3xl bg-white/70 p-4">
+                    <h3 class="ui font-bold">采集参数</h3>
+                    <div class="hidden">
+                      <label class="text-sm text-slate-600">抽帧间隔秒
+                        <input id="configFrameSample" type="number" min="0.2" max="30" step="0.1"
+                          class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                      </label>
+                      <label class="text-sm text-slate-600">默认同步数
+                        <input id="configSourceLimit" type="number" min="1" max="100"
+                          class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                      </label>
+                      <label class="text-sm text-slate-600">微博同步数
+                        <input id="configWeiboLimit" type="number" min="1" max="100"
+                          class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                      </label>
+                      <label
+                        class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">
+                        启用微博 Cookie
+                        <input id="configWeiboCookieEnabled" type="checkbox" class="h-4 w-4">
+                      </label>
+                      <label class="text-sm text-slate-600">微博超时秒
+                        <input id="configWeiboTimeout" type="number" min="5" max="120"
+                          class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                      </label>
+                      <label class="text-sm text-slate-600">微博重试次数
+                        <input id="configWeiboRetry" type="number" min="1" max="10"
+                          class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                      </label>
+                    </div>
+                    <div class="mt-3 grid gap-3 md:grid-cols-3">
+                      <label class="text-sm text-slate-600">抽帧间隔秒
+                        <input id="configFrameSampleVisible" type="number" min="0.2" max="30" step="0.1"
+                          class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                      </label>
+                    </div>
+                    <div class="mt-4 grid gap-3 lg:grid-cols-2" id="collectionPlatformConfigGrid">
+                      <section class="rounded-2xl border border-slate-200 bg-white/80 p-4">
+                        <div class="flex items-center justify-between gap-3">
+                          <h4 class="text-sm font-semibold text-slate-800">微博</h4>
+                          <label class="flex items-center gap-2 text-sm text-slate-600">启用
+                            <input id="configPlatformWeiboEnabled" type="checkbox" class="h-4 w-4">
+                          </label>
+                        </div>
+                        <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                          <label
+                            class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">启用
+                            Cookie
+                            <input id="configPlatformWeiboAuth" type="checkbox" class="h-4 w-4">
+                          </label>
+                          <label class="text-sm text-slate-600">同步数量
+                            <input id="configPlatformWeiboLimit" type="number" min="1" max="100"
+                              class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          </label>
+                          <label class="text-sm text-slate-600">同步间隔分钟
+                            <input id="configPlatformWeiboInterval" type="number" min="0"
+                              class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          </label>
+                          <label class="text-sm text-slate-600">超时秒
+                            <input id="configPlatformWeiboTimeout" type="number" min="5" max="120"
+                              class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          </label>
+                          <label class="text-sm text-slate-600">重试次数
+                            <input id="configPlatformWeiboRetry" type="number" min="1" max="10"
+                              class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          </label>
+                        </div>
+                      </section>
+                      <section class="rounded-2xl border border-slate-200 bg-white/80 p-4">
+                        <div class="flex items-center justify-between gap-3">
+                          <h4 class="text-sm font-semibold text-slate-800">Bilibili</h4>
+                          <label class="flex items-center gap-2 text-sm text-slate-600">启用
+                            <input id="configPlatformBilibiliEnabled" type="checkbox" class="h-4 w-4">
+                          </label>
+                        </div>
+                        <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                          <label
+                            class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">启用
+                            Cookie
+                            <input id="configPlatformBilibiliAuth" type="checkbox" class="h-4 w-4">
+                          </label>
+                          <label class="text-sm text-slate-600">同步数量
+                            <input id="configPlatformBilibiliLimit" type="number" min="1" max="100"
+                              class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          </label>
+                          <label class="text-sm text-slate-600">同步间隔分钟
+                            <input id="configPlatformBilibiliInterval" type="number" min="0"
+                              class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          </label>
+                          <label class="text-sm text-slate-600">超时秒
+                            <input id="configPlatformBilibiliTimeout" type="number" min="5" max="120"
+                              class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          </label>
+                          <label class="text-sm text-slate-600">重试次数
+                            <input id="configPlatformBilibiliRetry" type="number" min="1" max="10"
+                              class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          </label>
+                          <label class="text-sm text-slate-600">浏览器模拟目标
+                            <input id="configPlatformBilibiliImpersonate" type="text"
+                              class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          </label>
+                          <label class="text-sm text-slate-600 sm:col-span-2">来源页 Referer
+                            <input id="configPlatformBilibiliReferer" type="text"
+                              class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          </label>
+                        </div>
+                      </section>
+                      <section class="rounded-2xl border border-slate-200 bg-white/80 p-4">
+                        <div class="flex items-center justify-between gap-3">
+                          <h4 class="text-sm font-semibold text-slate-800">YouTube</h4>
+                          <label class="flex items-center gap-2 text-sm text-slate-600">启用
+                            <input id="configPlatformYoutubeEnabled" type="checkbox" class="h-4 w-4">
+                          </label>
+                        </div>
+                        <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                          <label
+                            class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">启用
+                            Cookie
+                            <input id="configPlatformYoutubeAuth" type="checkbox" class="h-4 w-4">
+                          </label>
+                          <label class="text-sm text-slate-600">同步数量
+                            <input id="configPlatformYoutubeLimit" type="number" min="1" max="100"
+                              class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          </label>
+                          <label class="text-sm text-slate-600">同步间隔分钟
+                            <input id="configPlatformYoutubeInterval" type="number" min="0"
+                              class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          </label>
+                          <label class="text-sm text-slate-600">超时秒
+                            <input id="configPlatformYoutubeTimeout" type="number" min="5" max="120"
+                              class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          </label>
+                          <label class="text-sm text-slate-600">重试次数
+                            <input id="configPlatformYoutubeRetry" type="number" min="1" max="10"
+                              class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          </label>
+                        </div>
+                      </section>
+                      <section class="rounded-2xl border border-slate-200 bg-white/80 p-4">
+                        <div class="flex items-center justify-between gap-3">
+                          <h4 class="text-sm font-semibold text-slate-800">X</h4>
+                          <label class="flex items-center gap-2 text-sm text-slate-600">启用
+                            <input id="configPlatformXEnabled" type="checkbox" class="h-4 w-4">
+                          </label>
+                        </div>
+                        <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                          <label
+                            class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">启用认证令牌
+                            <input id="configPlatformXAuth" type="checkbox" class="h-4 w-4">
+                          </label>
+                          <label class="text-sm text-slate-600">同步数量
+                            <input id="configPlatformXLimit" type="number" min="1" max="100"
+                              class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          </label>
+                          <label class="text-sm text-slate-600">同步间隔分钟
+                            <input id="configPlatformXInterval" type="number" min="0"
+                              class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          </label>
+                          <label class="text-sm text-slate-600">超时秒
+                            <input id="configPlatformXTimeout" type="number" min="5" max="120"
+                              class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          </label>
+                          <label class="text-sm text-slate-600">重试次数
+                            <input id="configPlatformXRetry" type="number" min="1" max="10"
+                              class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          </label>
+                        </div>
+                      </section>
+                      <section class="rounded-2xl border border-slate-200 bg-white/80 p-4 lg:col-span-2">
+                        <div class="flex items-center justify-between gap-3">
+                          <h4 class="text-sm font-semibold text-slate-800">通用链接</h4>
+                          <label class="flex items-center gap-2 text-sm text-slate-600">启用
+                            <input id="configPlatformGenericEnabled" type="checkbox" class="h-4 w-4">
+                          </label>
+                        </div>
+                        <div class="mt-3 grid gap-3 sm:grid-cols-4">
+                          <label class="text-sm text-slate-600">同步数量
+                            <input id="configPlatformGenericLimit" type="number" min="1" max="100"
+                              class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          </label>
+                          <label class="text-sm text-slate-600">同步间隔分钟
+                            <input id="configPlatformGenericInterval" type="number" min="0"
+                              class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          </label>
+                          <label class="text-sm text-slate-600">超时秒
+                            <input id="configPlatformGenericTimeout" type="number" min="5" max="120"
+                              class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          </label>
+                          <label class="text-sm text-slate-600">重试次数
+                            <input id="configPlatformGenericRetry" type="number" min="1" max="10"
+                              class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                          </label>
+                        </div>
+                      </section>
+                    </div>
+                  </div>
+
+                  <div data-config-subview="search" class="config-subview hidden rounded-3xl bg-white/70 p-4">
+                    <h3 class="ui font-bold">检索参数</h3>
+                    <div class="mt-3 grid gap-3 md:grid-cols-3">
+                      <label class="text-sm text-slate-600">文本阈值
+                        <input id="configTextThreshold" type="number" min="0" max="1" step="0.01"
+                          class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                      </label>
+                      <label class="text-sm text-slate-600">图片阈值
+                        <input id="configImageThreshold" type="number" min="0" max="1" step="0.01"
+                          class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                      </label>
+                      <label class="text-sm text-slate-600">文本返回数量
+                        <input id="configTextTopK" type="number" min="1" max="100"
+                          class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                      </label>
+                      <label class="text-sm text-slate-600">图片返回数量
+                        <input id="configImageTopK" type="number" min="1" max="100"
+                          class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                      </label>
+                    </div>
+                  </div>
+
+                  <div data-config-subview="prompt" class="config-subview hidden rounded-3xl bg-white/70 p-4">
+                    <h3 class="ui font-bold">提示词配置</h3>
+                    <div class="mt-3 grid gap-3 md:grid-cols-3">
+                      <label class="text-sm text-slate-600">语义文档风格
+                        <select id="configSemanticCorpusStyle"
+                          class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2">
+                          <option value="structured_zh">结构化中文语料</option>
+                        </select>
+                      </label>
+                      <label class="text-sm text-slate-600">图像描述风格
+                        <select id="configCaptionStyle"
+                          class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2">
+                          <option value="retrieval_keywords">检索关键词</option>
+                          <option value="detailed_caption">详细描述</option>
+                        </select>
+                      </label>
+                      <label class="text-sm text-slate-600">图像描述语言
+                        <select id="configCaptionLanguage"
+                          class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2">
+                          <option value="zh">中文</option>
+                          <option value="en">英文</option>
+                        </select>
+                      </label>
+                      <label
+                        class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">
+                        启用 OCR 线索
+                        <input id="configCaptionIncludeOcrHint" type="checkbox" class="h-4 w-4">
+                      </label>
+                      <label class="text-sm text-slate-600 md:col-span-2">ASR 初始提示词
+                        <textarea id="configAsrInitialPrompt" rows="3"
+                          class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none"
+                          placeholder="用于提高中文社交媒体视频里的人名、品牌名和活动名识别准确率"></textarea>
+                      </label>
+                      <label class="text-sm text-slate-600 md:col-span-3">ASR 热词
+                        <textarea id="configAsrHotwords" rows="3"
+                          class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 outline-none"
+                          placeholder="每行一个或使用逗号分隔，例如：直播，发布会，品牌"></textarea>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div data-config-subview="cluster" class="config-subview hidden rounded-3xl bg-white/70 p-4">
+                    <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <h3 class="ui font-bold">聚类参数</h3>
+                        <div id="clusterConfigSummary" class="mt-2 text-sm text-slate-500"></div>
+                      </div>
+                      <div class="flex gap-2">
+                        <button id="btnClusterRun" onclick="openClusterModeModal()"
+                          class="rounded-2xl bg-slate-950 px-4 py-2 text-sm text-white">运行聚类</button>
+                        <button id="btnClusterRollback" onclick="rollbackClustering()"
+                          class="rounded-2xl bg-slate-200 px-4 py-2 text-sm text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                          disabled>回退</button>
+                      </div>
+                    </div>
+                    <div class="mt-3 grid gap-3 md:grid-cols-3">
+                      <select id="clusterAlgorithm" class="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                        <option value="dbscan">DBSCAN</option>
+                        <option value="hdbscan">HDBSCAN</option>
+                        <option value="optics">OPTICS</option>
+                      </select>
+                      <select id="clusterMetric" class="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                        <option value="cosine">余弦相似度</option>
+                        <option value="euclidean">欧氏距离</option>
+                      </select>
+                      <input id="clusterEps" type="number" min="0.01" max="5" step="0.05"
+                        class="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                      <input id="clusterMinSamples" type="number" min="2" max="50"
+                        class="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                    </div>
+                  </div>
+
+                  <div data-config-subview="face" class="config-subview hidden rounded-3xl bg-white/70 p-4">
+                    <h3 class="ui font-bold">人脸过滤参数</h3>
+                    <div class="mt-3 grid gap-3 md:grid-cols-3">
+                      <label
+                        class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">
+                        启用过滤
+                        <input id="faceQualityEnabled" type="checkbox" class="h-4 w-4">
+                      </label>
+                      <label class="text-sm text-slate-600">最小人脸尺寸
+                        <input id="faceQualityMinSize" type="number" min="20" max="256"
+                          class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                      </label>
+                      <label class="text-sm text-slate-600">最小画面占比
+                        <input id="faceQualityMinRatio" type="number" min="0" max="0.5" step="0.005"
+                          class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                      </label>
+                      <label class="text-sm text-slate-600">清晰度阈值
+                        <input id="faceQualityMinBlur" type="number" min="0" max="1000" step="1"
+                          class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                      </label>
+                      <label class="text-sm text-slate-600">清晰度评估尺寸
+                        <input id="faceQualityBlurEvalSize" type="number" min="32" max="512" step="1"
+                          class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                      </label>
+                      <label class="text-sm text-slate-600">姿态偏差
+                        <input id="faceQualityMaxPose" type="number" min="0" max="1" step="0.01"
+                          class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
+                      </label>
+                    </div>
                   </div>
                 </div>
+              </div>
+            </div>
 
-                <div data-config-subview="face" class="config-subview hidden rounded-3xl bg-white/70 p-4">
-                  <h3 class="ui font-bold">人脸过滤参数</h3>
-                  <div class="mt-3 grid gap-3 md:grid-cols-3">
-                    <label
-                      class="flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-600">
-                      启用过滤
-                      <input id="faceQualityEnabled" type="checkbox" class="h-4 w-4">
-                    </label>
-                    <label class="text-sm text-slate-600">最小人脸尺寸
-                      <input id="faceQualityMinSize" type="number" min="20" max="256"
-                        class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                    </label>
-                    <label class="text-sm text-slate-600">最小画面占比
-                      <input id="faceQualityMinRatio" type="number" min="0" max="0.5" step="0.005"
-                        class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                    </label>
-                    <label class="text-sm text-slate-600">清晰度阈值
-                      <input id="faceQualityMinBlur" type="number" min="0" max="1000" step="1"
-                        class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                    </label>
-                    <label class="text-sm text-slate-600">清晰度评估尺寸
-                      <input id="faceQualityBlurEvalSize" type="number" min="32" max="512" step="1"
-                        class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                    </label>
-                    <label class="text-sm text-slate-600">姿态偏差
-                      <input id="faceQualityMaxPose" type="number" min="0" max="1" step="0.01"
-                        class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2">
-                    </label>
+            <div data-admin-subview="users" class="admin-subview hidden">
+              <div class="glass rounded-3xl p-6">
+                <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <h2 class="ui text-xl font-bold">账户管理</h2>
+                    <p class="mt-2 text-sm text-slate-500">管理员可新增用户、重置密码、切换角色和启用状态。</p>
                   </div>
                 </div>
+                <div class="mt-5 grid gap-3 lg:grid-cols-[1fr_1fr_160px_120px_120px]">
+                  <input id="newUserUsername"
+                    class="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none" placeholder="用户名">
+                  <input id="newUserPassword" type="password"
+                    class="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none" placeholder="初始密码">
+                  <select id="newUserRole" class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                    <option value="user">普通用户</option>
+                    <option value="admin">管理员</option>
+                  </select>
+                  <label
+                    class="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm">
+                    启用 <input id="newUserEnabled" type="checkbox" class="h-4 w-4" checked>
+                  </label>
+                  <button id="btnCreateUser" onclick="createUser()"
+                    class="rounded-2xl bg-slate-950 px-4 py-3 text-white">添加用户</button>
+                </div>
+                <div id="userList" class="mt-5 grid gap-3"></div>
               </div>
             </div>
-          </div>
 
-          <div data-admin-subview="users" class="admin-subview hidden">
-            <div class="glass rounded-3xl p-6">
-              <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <h2 class="ui text-xl font-bold">账户管理</h2>
-                  <p class="mt-2 text-sm text-slate-500">管理员可新增用户、重置密码、切换角色和启用状态。</p>
+            <div data-admin-subview="reset" class="admin-subview hidden">
+              <div class="glass rounded-3xl border border-red-200 p-6">
+                <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <h2 class="ui text-xl font-bold text-red-700">危险操作</h2>
+                    <p class="mt-2 text-sm text-slate-500">重置会清空数据库、索引、派生文件和系统配置；默认保留 `storage/videos`、微博与 YouTube
+                      cookie
+                      文件。</p>
+                  </div>
+                  <button id="btnResetSystem" onclick="openResetSystemModal()"
+                    class="rounded-2xl bg-red-700 px-5 py-3 text-white">重置系统</button>
                 </div>
               </div>
-              <div class="mt-5 grid gap-3 lg:grid-cols-[1fr_1fr_160px_120px_120px]">
-                <input id="newUserUsername" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none"
-                  placeholder="用户名">
-                <input id="newUserPassword" type="password"
-                  class="rounded-2xl border border-slate-200 bg-white px-4 py-3 outline-none" placeholder="初始密码">
-                <select id="newUserRole" class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
-                  <option value="user">普通用户</option>
-                  <option value="admin">管理员</option>
-                </select>
-                <label class="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm">
-                  启用 <input id="newUserEnabled" type="checkbox" class="h-4 w-4" checked>
-                </label>
-                <button id="btnCreateUser" onclick="createUser()"
-                  class="rounded-2xl bg-slate-950 px-4 py-3 text-white">添加用户</button>
-              </div>
-              <div id="userList" class="mt-5 grid gap-3"></div>
             </div>
           </div>
-
-          <div data-admin-subview="reset" class="admin-subview hidden">
-            <div class="glass rounded-3xl border border-red-200 p-6">
-              <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <h2 class="ui text-xl font-bold text-red-700">危险操作</h2>
-                  <p class="mt-2 text-sm text-slate-500">重置会清空数据库、索引、派生文件和系统配置；默认保留 `storage/videos`、微博与 YouTube cookie
-                    文件。</p>
-                </div>
-                <button id="btnResetSystem" onclick="openResetSystemModal()"
-                  class="rounded-2xl bg-red-700 px-5 py-3 text-white">重置系统</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-    </main>
-  </div>
+        </section>
+      </main>
+    </div>
   </div>
 
   <div id="clusterModeModal"
@@ -776,7 +786,7 @@
       <div class="glass w-full max-w-lg rounded-3xl p-6 shadow-2xl">
         <div class="flex items-start justify-between gap-4">
           <div>
-            <p class="ui text-sm uppercase tracking-[0.25em] text-red-600">Danger Zone</p>
+            <p class="ui text-sm uppercase tracking-[0.25em] text-red-600">危险操作</p>
             <h3 id="dangerTitle" class="ui mt-2 text-2xl font-bold">危险操作确认</h3>
             <p id="dangerDesc" class="mt-2 text-sm leading-6 text-slate-500"></p>
           </div>
@@ -818,26 +828,26 @@
             </div>
             <div class="space-y-4">
               <div class="rounded-2xl bg-white/70 p-4">
-                <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Semantic</p>
+                <p class="text-xs uppercase tracking-[0.2em] text-slate-400">语义融合</p>
                 <p id="modalSemantic"
                   class="mt-2 max-h-40 overflow-y-auto whitespace-pre-wrap break-words text-sm leading-7 text-slate-700">
                 </p>
               </div>
               <div class="grid gap-3">
                 <div class="rounded-2xl bg-white/70 p-4">
-                  <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Visual</p>
+                  <p class="text-xs uppercase tracking-[0.2em] text-slate-400">视觉线索</p>
                   <p id="modalVisual"
                     class="mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
                   </p>
                 </div>
                 <div class="rounded-2xl bg-white/70 p-4">
-                  <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Speech</p>
+                  <p class="text-xs uppercase tracking-[0.2em] text-slate-400">语音/字幕</p>
                   <p id="modalSpeech"
                     class="mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
                   </p>
                 </div>
                 <div class="rounded-2xl bg-white/70 p-4">
-                  <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Post</p>
+                  <p class="text-xs uppercase tracking-[0.2em] text-slate-400">正文内容</p>
                   <p id="modalPost"
                     class="mt-2 max-h-28 overflow-y-auto whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
                   </p>
@@ -912,7 +922,44 @@
       generic: "Generic"
     };
 
+    const metricLabels = {
+      semantic: "语义检索",
+      person_name: "人物名",
+      person_semantic: "人物语义",
+      cosine: "余弦相似度",
+      euclidean: "欧氏距离"
+    };
+
+    const platformLabels = {
+      weibo: "微博",
+      bilibili: "Bilibili",
+      youtube: "YouTube",
+      x: "X",
+      generic: "通用链接",
+      unknown: "未知"
+    };
+
+    const sourceTypeLabels = {
+      channel: "频道",
+      weibo_user: "微博用户",
+      x_user: "X 用户",
+      post: "图文",
+      video: "视频"
+    };
+
+    const semanticSourceLabels = {
+      visual: "视觉",
+      subtitle: "语音/字幕",
+      speech: "语音/字幕",
+      post: "正文",
+      semantic: "语义"
+    };
+
     const safeText = (v, f = "暂无") => v && String(v).trim() ? String(v).trim() : f;
+    const displayMetric = (v) => metricLabels[String(v || "semantic").toLowerCase()] || safeText(v, "语义检索");
+    const displayPlatform = (v) => platformLabels[String(v || "unknown").toLowerCase()] || safeText(v, "未知");
+    const displaySourceType = (v) => sourceTypeLabels[String(v || "").toLowerCase()] || safeText(v, "未知类型");
+    const displaySemanticSource = (items) => (items || []).map(item => semanticSourceLabels[String(item || "").toLowerCase()] || item).filter(Boolean).join("、") || "暂无";
     const formatTime = (s) => { const n = Math.max(0, Math.floor(Number(s || 0))); return `${String(Math.floor(n / 3600)).padStart(2, "0")}:${String(Math.floor((n % 3600) / 60)).padStart(2, "0")}:${String(n % 60).padStart(2, "0")}` };
     const fetchJson = async (u, o = {}) => (await fetch(u, o)).json();
     const modalIds = ["detailModal", "timelineModal", "clusterModeModal", "dangerModal"];
@@ -966,10 +1013,10 @@
         b.classList.toggle("active", active);
       });
       const meta = {
-        text: ["Text Search", "以文搜图"],
-        image: ["Image Search", "以图搜图"],
-        people: ["People Library", "人物库"],
-        admin: ["Data Console", getAdminSubViewTitle(state.adminSubView)]
+        text: ["文本检索", "以文搜图"],
+        image: ["图片检索", "以图搜图"],
+        people: ["人物库", "人物库"],
+        admin: ["数据控制台", getAdminSubViewTitle(state.adminSubView)]
       }[view];
       document.getElementById("viewKicker").textContent = meta[0];
       document.getElementById("viewTitle").textContent = meta[1];
@@ -1233,7 +1280,7 @@
       state.users.forEach(user => {
         const d = document.createElement("div");
         d.className = "grid gap-3 rounded-3xl bg-white/70 p-4 md:grid-cols-[1fr_140px_120px_1fr_120px]";
-        d.innerHTML = `<div><p class="font-semibold">${safeText(user.username)}</p><p class="text-xs text-slate-400">ID ${user.id}</p></div><select class="user-role rounded-xl border border-slate-200 bg-white px-3 py-2"><option value="user">普通用户</option><option value="admin">管理员</option></select><label class="flex items-center gap-2 text-sm text-slate-600"><input class="user-enabled h-4 w-4" type="checkbox"> 启用</label><input class="user-password rounded-xl border border-slate-200 bg-white px-3 py-2" type="password" placeholder="新密码，留空不改"><button class="user-save rounded-2xl bg-slate-950 px-4 py-2 text-sm text-white">保存</button>`;
+        d.innerHTML = `<div><p class="font-semibold">${safeText(user.username)}</p><p class="text-xs text-slate-400">编号 ${user.id}</p></div><select class="user-role rounded-xl border border-slate-200 bg-white px-3 py-2"><option value="user">普通用户</option><option value="admin">管理员</option></select><label class="flex items-center gap-2 text-sm text-slate-600"><input class="user-enabled h-4 w-4" type="checkbox"> 启用</label><input class="user-password rounded-xl border border-slate-200 bg-white px-3 py-2" type="password" placeholder="新密码，留空不改"><button class="user-save rounded-2xl bg-slate-950 px-4 py-2 text-sm text-white">保存</button>`;
         d.querySelector(".user-role").value = user.role || "user";
         d.querySelector(".user-enabled").checked = Boolean(user.enabled);
         d.querySelector(".user-save").addEventListener("click", () => saveUser(user.id, d));
@@ -1613,11 +1660,12 @@
       c.innerHTML = "";
       results.forEach(item => {
         const badge = item.content_type === "post" ? "图文" : "视频";
-        const score = item.score !== undefined && item.score !== null ? `${Number(item.score).toFixed(4)} · ${item.metric || "semantic"}` : "";
+        const score = item.score !== undefined && item.score !== null ? `${Number(item.score).toFixed(4)} · ${displayMetric(item.metric)}` : "";
+        const personLabel = item.person_name ? `<p class="mt-2 truncate text-xs font-medium text-teal-700">${safeText(item.person_name)}</p>` : "";
         const d = document.createElement("button");
         d.className = "glass rounded-3xl p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md";
         d.onclick = () => openDetailModal(item);
-        d.innerHTML = `<div class="relative overflow-hidden rounded-2xl bg-slate-100"><img src="${item.image || item.image_path}" class="h-52 w-full object-cover"><div class="absolute left-3 top-3 rounded-full bg-white/90 px-3 py-1 text-xs">${badge}</div>${score ? `<div class="absolute right-3 top-3 rounded-full bg-slate-950/80 px-3 py-1 text-xs text-white">${score}</div>` : ""}</div><div class="mt-3"><p class="h-20 overflow-hidden text-sm leading-6 text-slate-700">${safeText(item.semantic_text || item.description)}</p><div class="mt-3 flex items-center justify-between text-xs text-slate-500"><span>${safeText(item.platform || "unknown")}</span><span>${item.content_type === "video" ? formatTime(item.timestamp) : "图文内容"}</span></div></div>`;
+        d.innerHTML = `<div class="relative overflow-hidden rounded-2xl bg-slate-100"><img src="${item.image || item.image_path}" class="h-52 w-full object-cover"><div class="absolute left-3 top-3 rounded-full bg-white/90 px-3 py-1 text-xs">${badge}</div>${score ? `<div class="absolute right-3 top-3 rounded-full bg-slate-950/80 px-3 py-1 text-xs text-white">${score}</div>` : ""}</div><div class="mt-3">${personLabel}<p class="h-20 overflow-hidden text-sm leading-6 text-slate-700">${safeText(item.semantic_text || item.description)}</p><div class="mt-3 flex items-center justify-between text-xs text-slate-500"><span>${displayPlatform(item.platform)}</span><span>${item.content_type === "video" ? formatTime(item.timestamp) : "图文内容"}</span></div></div>`;
         c.appendChild(d);
       });
     }
@@ -1639,7 +1687,7 @@
         const d = document.createElement("div");
         d.className = "rounded-3xl bg-white/70 p-4";
         const deleteAction = state.admin.authenticated ? `<div class="mt-4 flex gap-3"><button class="delete-source-btn rounded-2xl bg-red-700 px-4 py-2 text-sm text-white">删除源</button></div>` : "";
-        d.innerHTML = `<div class="flex items-start justify-between gap-3"><div class="min-w-0"><p class="ui text-lg font-bold">${safeText(s.title, s.platform)}</p><p class="mt-1 break-all text-sm text-slate-500">${safeText(s.source_url)}</p></div><span class="rounded-full bg-slate-100 px-3 py-1 text-xs">${safeText(s.source_type)}</span></div>${keywords ? `<p class="mt-3 text-xs text-slate-500">关键词：${keywords}</p>` : ""}${statsLine ? `<p class="mt-2 text-xs text-slate-500">${statsLine}</p>` : ""}<p class="mt-3 text-xs text-slate-400">上次同步：${safeText(s.last_synced_at, "未同步")}</p>${deleteAction}`;
+        d.innerHTML = `<div class="flex items-start justify-between gap-3"><div class="min-w-0"><p class="ui text-lg font-bold">${safeText(s.title, displayPlatform(s.platform))}</p><p class="mt-1 break-all text-sm text-slate-500">${safeText(s.source_url)}</p></div><span class="rounded-full bg-slate-100 px-3 py-1 text-xs">${displaySourceType(s.source_type)}</span></div>${keywords ? `<p class="mt-3 text-xs text-slate-500">关键词：${keywords}</p>` : ""}${statsLine ? `<p class="mt-2 text-xs text-slate-500">${statsLine}</p>` : ""}<p class="mt-3 text-xs text-slate-400">上次同步：${safeText(s.last_synced_at, "未同步")}</p>${deleteAction}`;
         const deleteBtn = d.querySelector(".delete-source-btn");
         if (deleteBtn) deleteBtn.addEventListener("click", () => openDeleteSourceModal(s));
         c.appendChild(d);
@@ -1720,7 +1768,7 @@
         const nameInput = state.admin.authenticated
           ? `<input value="${p.name || `人物 ${p.person_id}`}" onchange="renamePerson(${p.person_id},this.value)" class="mt-3 w-full border-b border-slate-200 bg-transparent pb-2 text-center text-sm font-medium outline-none">`
           : `<p class="mt-3 text-center text-sm font-medium">${p.name || `人物 ${p.person_id}`}</p>`;
-        d.innerHTML = `<div ${adminAttrs} class="${state.admin.authenticated ? "cursor-grab" : ""}"><button onclick="openTimelineModal(${p.person_id})" class="w-full text-left"><img src="${p.cover_image}" class="h-44 w-full rounded-2xl object-cover"></button></div>${nameInput}<div class="mt-3 flex items-center justify-between text-xs text-slate-500"><span>ID ${p.person_id}</span><span>${p.count} 张</span></div>`;
+        d.innerHTML = `<div ${adminAttrs} class="${state.admin.authenticated ? "cursor-grab" : ""}"><button onclick="openTimelineModal(${p.person_id})" class="w-full text-left"><img src="${p.cover_image}" class="h-44 w-full rounded-2xl object-cover"></button></div>${nameInput}<div class="mt-3 flex items-center justify-between text-xs text-slate-500"><span>编号 ${p.person_id}</span><span>${p.count} 张</span></div>`;
         c.appendChild(d);
       });
     }
@@ -1785,11 +1833,11 @@
       document.getElementById("modalVisual").textContent = safeText(item.visual_text);
       document.getElementById("modalSpeech").textContent = safeText(item.speech_text);
       document.getElementById("modalPost").textContent = safeText(item.post_text);
-      document.getElementById("modalType").textContent = safeText(item.content_type);
+      document.getElementById("modalType").textContent = displaySourceType(item.content_type);
       document.getElementById("modalTime").textContent = item.content_type === "video" ? formatTime(item.timestamp) : "图文内容";
-      document.getElementById("modalSource").textContent = safeText((item.semantic_source || []).join(", "));
+      document.getElementById("modalSource").textContent = displaySemanticSource(item.semantic_source || []);
       const c = item.cluster_config || state.currentClusterConfig || {};
-      document.getElementById("modalCluster").textContent = c.algorithm ? `${c.algorithm} / ${c.metric} / eps ${c.eps} / min_samples ${c.min_samples}` : "暂无";
+      document.getElementById("modalCluster").textContent = c.algorithm ? `${String(c.algorithm).toUpperCase()} / ${displayMetric(c.metric)} / 半径 ${c.eps} / 最小样本数 ${c.min_samples}` : "暂无";
       const a = document.getElementById("modalLink");
       a.href = item.link_url || item.source_url || "#";
       a.textContent = item.content_type === "video" ? "跳转视频对应时间点" : "跳转原始内容";
@@ -1818,7 +1866,7 @@
       state.timelineItems.forEach((item, i) => {
         const row = document.createElement("div");
         row.className = "mb-4 rounded-3xl bg-white/70 p-4 shadow-sm";
-        row.innerHTML = `<div class="grid gap-4 md:grid-cols-[160px_1fr] lg:grid-cols-[180px_1fr]"><img src="${item.full_image || item.full_image_path || item.image}" class="h-28 w-full rounded-2xl object-cover sm:h-32"><div class="min-w-0"><div class="flex flex-wrap items-center gap-2"><span class="rounded-full bg-slate-100 px-3 py-1 text-xs">${safeText(item.platform || "unknown")}</span><span class="rounded-full bg-slate-100 px-3 py-1 text-xs">${item.content_type === "video" ? formatTime(item.timestamp) : "图文内容"}</span></div><p class="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">${safeText(item.semantic_text || item.description)}</p><div class="mt-3 flex flex-wrap gap-3"><button data-index="${i}" class="detail-btn rounded-2xl bg-slate-950 px-4 py-2 text-sm text-white">查看详情</button><a href="${item.link_url || item.source_url || "#"}" target="_blank" class="rounded-2xl bg-teal-700 px-4 py-2 text-sm text-white">打开原始内容</a></div></div></div>`;
+        row.innerHTML = `<div class="grid gap-4 md:grid-cols-[160px_1fr] lg:grid-cols-[180px_1fr]"><img src="${item.full_image || item.full_image_path || item.image}" class="h-28 w-full rounded-2xl object-cover sm:h-32"><div class="min-w-0"><div class="flex flex-wrap items-center gap-2"><span class="rounded-full bg-slate-100 px-3 py-1 text-xs">${displayPlatform(item.platform)}</span><span class="rounded-full bg-slate-100 px-3 py-1 text-xs">${item.content_type === "video" ? formatTime(item.timestamp) : "图文内容"}</span></div><p class="mt-3 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">${safeText(item.semantic_text || item.description)}</p><div class="mt-3 flex flex-wrap gap-3"><button data-index="${i}" class="detail-btn rounded-2xl bg-slate-950 px-4 py-2 text-sm text-white">查看详情</button><a href="${item.link_url || item.source_url || "#"}" target="_blank" class="rounded-2xl bg-teal-700 px-4 py-2 text-sm text-white">打开原始内容</a></div></div></div>`;
         c.appendChild(row);
       });
       c.querySelectorAll(".detail-btn").forEach(b => b.addEventListener("click", () => openDetailModal(state.timelineItems[Number(b.dataset.index)])));

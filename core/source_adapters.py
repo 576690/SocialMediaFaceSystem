@@ -368,12 +368,12 @@ def parse_adapter_config(raw, filename="adapter.json"):
         try:
             import yaml
         except ImportError as exc:
-            raise SourceAdapterError("YAML adapter configs require PyYAML to be installed.") from exc
+            raise SourceAdapterError("YAML 适配器配置需要先安装 PyYAML。") from exc
         data = yaml.safe_load(text)
     else:
         data = json.loads(text)
     if not isinstance(data, dict):
-        raise SourceAdapterError("Adapter config must be a JSON object.")
+        raise SourceAdapterError("适配器配置必须是 JSON 对象。")
     return validate_adapter_config(data)
 
 
@@ -384,36 +384,36 @@ def validate_adapter_config(config):
     display_name = str(config.get("display_name") or adapter_id).strip()
     source_types = config.get("source_types")
     if not ADAPTER_ID_RE.match(adapter_id):
-        raise SourceAdapterError("adapter_id must be 2-64 letters, numbers, dashes, or underscores.")
+        raise SourceAdapterError("adapter_id 必须由 2-64 位字母、数字、连字符或下划线组成。")
     if not platform:
-        raise SourceAdapterError("platform is required.")
+        raise SourceAdapterError("platform 不能为空。")
     if not display_name:
-        raise SourceAdapterError("display_name is required.")
+        raise SourceAdapterError("display_name 不能为空。")
     if not isinstance(source_types, list) or not source_types:
-        raise SourceAdapterError("source_types must be a non-empty list.")
+        raise SourceAdapterError("source_types 必须是非空列表。")
     normalized_types = []
     for item in source_types:
         cleaned = str(item or "").strip().lower()
         if not cleaned:
-            raise SourceAdapterError("source_types cannot contain empty values.")
+            raise SourceAdapterError("source_types 不能包含空值。")
         if cleaned not in normalized_types:
             normalized_types.append(cleaned)
 
     url_patterns = config.get("url_patterns") or []
     if not isinstance(url_patterns, list):
-        raise SourceAdapterError("url_patterns must be a list.")
+        raise SourceAdapterError("url_patterns 必须是列表。")
     settings = config.get("settings") or {}
     if not isinstance(settings, dict):
-        raise SourceAdapterError("settings must be an object.")
+        raise SourceAdapterError("settings 必须是对象。")
     module = str(config.get("module") or "").strip()
     default_limit = config.get("default_limit")
     if default_limit is not None:
         try:
             default_limit = int(default_limit)
         except (TypeError, ValueError) as exc:
-            raise SourceAdapterError("default_limit must be an integer.") from exc
+            raise SourceAdapterError("default_limit 必须是整数。") from exc
         if not 1 <= default_limit <= 100:
-            raise SourceAdapterError("default_limit must be between 1 and 100.")
+            raise SourceAdapterError("default_limit 必须在 1 到 100 之间。")
 
     return {
         "adapter_id": adapter_id,
@@ -443,7 +443,7 @@ class SourceAdapterRegistry:
 
     def _register(self, adapter):
         if adapter.adapter_id in self.adapters:
-            raise SourceAdapterError(f"Duplicate source adapter id: {adapter.adapter_id}")
+            raise SourceAdapterError(f"采集源适配器 ID 重复：{adapter.adapter_id}")
         self.adapters[adapter.adapter_id] = adapter
 
     def _load_config_adapters(self):
@@ -453,7 +453,7 @@ class SourceAdapterRegistry:
                 config = validate_adapter_config(json.load(f))
             if config["adapter_id"] in self.adapters:
                 raise SourceAdapterError(
-                    f"Config adapter id conflicts with a built-in adapter: {config['adapter_id']}"
+                    f"配置适配器 ID 与内置适配器冲突：{config['adapter_id']}"
                 )
             adapter = self._build_config_adapter(config)
             self._register(adapter)
@@ -466,24 +466,24 @@ class SourceAdapterRegistry:
     def _load_module_adapter(self, config):
         module_ref = config["module"]
         if ":" not in module_ref:
-            raise SourceAdapterError("module must use the format module_name:ClassName.")
+            raise SourceAdapterError("module 必须使用 module_name:ClassName 格式。")
         module_name, class_name = module_ref.split(":", 1)
         if not ADAPTER_ID_RE.match(module_name):
-            raise SourceAdapterError("module name must be a simple local Python module name.")
+            raise SourceAdapterError("module 名称必须是简单的本地 Python 模块名。")
         module_path = (app_config.source_adapter_code_dir / f"{module_name}.py").resolve()
         try:
             module_path.relative_to(app_config.source_adapter_code_dir.resolve())
         except ValueError as exc:
-            raise SourceAdapterError("module must resolve inside the local adapter module directory.") from exc
+            raise SourceAdapterError("module 必须位于本地适配器模块目录内。") from exc
         if not module_path.exists():
-            raise SourceAdapterError(f"Adapter module file not found: {module_path}")
+            raise SourceAdapterError(f"适配器模块文件不存在：{module_path}")
 
         spec = importlib.util.spec_from_file_location(module_name, module_path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         adapter_cls = getattr(module, class_name, None)
         if adapter_cls is None:
-            raise SourceAdapterError(f"Adapter class not found: {class_name}")
+            raise SourceAdapterError(f"适配器类不存在：{class_name}")
         try:
             return adapter_cls(config=config, collector=self.collector)
         except TypeError:
@@ -516,9 +516,9 @@ class SourceAdapterRegistry:
         if adapter_id:
             adapter = self.get(adapter_id)
             if adapter is None or not adapter.enabled:
-                raise SourceAdapterError(f"Source adapter is not available: {adapter_id}")
+                raise SourceAdapterError(f"采集源适配器不可用：{adapter_id}")
             if not adapter.match(source_url, platform=platform, source_type=source_type):
-                raise SourceAdapterError(f"Source adapter does not support this source: {adapter_id}")
+                raise SourceAdapterError(f"采集源适配器不支持当前来源：{adapter_id}")
             return adapter
 
         configured = [item for item in self.adapters.values() if item.configurable]
@@ -526,12 +526,12 @@ class SourceAdapterRegistry:
         for adapter in configured + builtins:
             if adapter.enabled and adapter.match(source_url, platform=platform, source_type=source_type):
                 return adapter
-        raise SourceAdapterError("No source adapter supports this source.")
+        raise SourceAdapterError("没有可用的采集源适配器支持当前来源。")
 
     def save_config(self, config):
         config = validate_adapter_config(config)
         if config["adapter_id"] in self.adapters and self.adapters[config["adapter_id"]].builtin:
-            raise SourceAdapterError("adapter_id conflicts with a built-in adapter.")
+            raise SourceAdapterError("adapter_id 与内置适配器冲突。")
         app_config.ensure_dirs()
         path = app_config.source_adapter_config_dir / f"{config['adapter_id']}.json"
         with open(path, "w", encoding="utf-8") as f:
@@ -542,9 +542,9 @@ class SourceAdapterRegistry:
     def set_enabled(self, adapter_id, enabled):
         adapter = self.get(adapter_id)
         if adapter is None:
-            raise SourceAdapterError("Source adapter not found.")
+            raise SourceAdapterError("采集源适配器不存在。")
         if adapter.builtin:
-            raise SourceAdapterError("Built-in adapters cannot be enabled or disabled.")
+            raise SourceAdapterError("内置适配器不能启用或禁用。")
         path = app_config.source_adapter_config_dir / f"{adapter.adapter_id}.json"
         with open(path, "r", encoding="utf-8") as f:
             config = validate_adapter_config(json.load(f))
@@ -557,9 +557,9 @@ class SourceAdapterRegistry:
     def delete_config(self, adapter_id):
         adapter = self.get(adapter_id)
         if adapter is None:
-            raise SourceAdapterError("Source adapter not found.")
+            raise SourceAdapterError("采集源适配器不存在。")
         if adapter.builtin:
-            raise SourceAdapterError("Built-in adapters cannot be deleted.")
+            raise SourceAdapterError("内置适配器不能删除。")
         path = app_config.source_adapter_config_dir / f"{adapter.adapter_id}.json"
         if path.exists():
             path.unlink()

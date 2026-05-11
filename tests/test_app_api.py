@@ -5,6 +5,7 @@ import unittest
 from unittest import mock
 from pathlib import Path
 
+import numpy as np
 from fastapi.testclient import TestClient
 
 import app as app_module
@@ -188,6 +189,101 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(people_payload["status"], "error")
         self.assertTrue(people_payload["auth_required"])
 
+    def test_text_search_prioritizes_named_person_and_supports_person_semantic_query(self):
+        self._setup_admin()
+        vector = np.ones(512, dtype=np.float32)
+        alice_stage = app_module.db.add_face(
+            video_id="v1",
+            timestamp=0.0,
+            image_path="/faces/alice_stage.jpg",
+            full_image_path="/faces/alice_stage_full.jpg",
+            source_url="https://example.com/alice-stage",
+            embedding=vector,
+            description="Alice on stage",
+            semantic_text="conference stage",
+        )
+        alice_gala = app_module.db.add_face(
+            video_id="v2",
+            timestamp=1.0,
+            image_path="/faces/alice_gala.jpg",
+            full_image_path="/faces/alice_gala_full.jpg",
+            source_url="https://example.com/alice-gala",
+            embedding=vector,
+            description="Alice at gala",
+            semantic_text="red carpet gala",
+        )
+        bob_face = app_module.db.add_face(
+            video_id="v3",
+            timestamp=2.0,
+            image_path="/faces/bob.jpg",
+            full_image_path="/faces/bob_full.jpg",
+            source_url="https://example.com/bob",
+            embedding=vector,
+            description="Bob launch",
+            semantic_text="product launch",
+        )
+        app_module.db.update_person_ids(
+            [(1, alice_stage), (1, alice_gala), (2, bob_face)]
+        )
+        app_module.db.rename_person(1, "Alice")
+        app_module.db.rename_person(2, "Bob")
+
+        name_payload = self.client.get("/api/search/text?q=Alice").json()
+        with mock.patch.object(
+            app_module.ai_engine,
+            "rank_texts_by_similarity",
+            return_value=[(0, 0.91), (1, 0.2)],
+        ) as rank_mock:
+            semantic_payload = self.client.get("/api/search/text?q=Alice%20gala").json()
+
+        self.assertEqual(name_payload["status"], "success")
+        self.assertEqual([item["person_id"] for item in name_payload["results"]], [1, 1])
+        self.assertEqual(name_payload["results"][0]["metric"], "person_name")
+        self.assertEqual(name_payload["results"][0]["person_name"], "Alice")
+        self.assertEqual(semantic_payload["status"], "success")
+        self.assertEqual([item["id"] for item in semantic_payload["results"]], [alice_gala, alice_stage])
+        self.assertTrue(all(item["person_id"] == 1 for item in semantic_payload["results"]))
+        self.assertEqual(semantic_payload["results"][0]["metric"], "person_semantic")
+        rank_mock.assert_called_once()
+
+    def test_text_search_without_person_name_uses_existing_semantic_flow(self):
+        self._setup_admin()
+        vector = np.ones(512, dtype=np.float32)
+        first = app_module.db.add_face(
+            video_id="v1",
+            timestamp=0.0,
+            image_path="/faces/first.jpg",
+            full_image_path="/faces/first_full.jpg",
+            source_url="https://example.com/first",
+            embedding=vector,
+            description="quiet scene",
+            semantic_text="quiet scene",
+        )
+        second = app_module.db.add_face(
+            video_id="v2",
+            timestamp=1.0,
+            image_path="/faces/second.jpg",
+            full_image_path="/faces/second_full.jpg",
+            source_url="https://example.com/second",
+            embedding=vector,
+            description="launch event",
+            semantic_text="launch event",
+        )
+        app_module.db.update_person_ids([(1, first), (2, second)])
+        app_module.db.rename_person(1, "Alice")
+
+        with mock.patch.object(
+            app_module.ai_engine,
+            "rank_texts_by_similarity",
+            return_value=[(1, 0.9), (0, 0.1)],
+        ) as rank_mock:
+            payload = self.client.get("/api/search/text?q=launch").json()
+
+        self.assertEqual(payload["status"], "success")
+        self.assertEqual([item["id"] for item in payload["results"]], [second])
+        self.assertEqual(payload["results"][0]["metric"], "semantic")
+        rank_mock.assert_called_once()
+
     def test_admin_can_manage_users_and_disabled_user_cannot_login(self):
         self._setup_admin()
         user = self._create_user()
@@ -322,6 +418,140 @@ class AppApiTests(unittest.TestCase):
         self.assertTrue(config_payload["admin_required"])
         self.assertEqual(users_payload["status"], "error")
         self.assertTrue(users_payload["admin_required"])
+
+    def test_import_post_accepts_weibo_url_without_manual_image_urls(self):
+        self._setup_admin()
+        extracted = {
+            "platform": "weibo",
+            "external_id": "5241373692531045",
+            "title": "weibo post",
+            "post_text": "hello from weibo",
+            "image_urls": ["https://wx1.sinaimg.cn/large/a.jpg"],
+            "source_url": "https://weibo.cn/comment/5241373692531045",
+        }
+
+        with mock.patch.object(
+            app_module.collector,
+            "extract_post_metadata",
+            return_value=extracted,
+        ) as extract_mock, mock.patch.object(
+            app_module.collector,
+            "download_post_images",
+            return_value=[
+                {
+                    "local_path": str(app_config.content_dir / "a.jpg"),
+                    "web_path": "/content/a.jpg",
+                    "source_url": extracted["image_urls"][0],
+                }
+            ],
+        ), mock.patch.object(
+            app_module.db,
+            "upsert_content",
+            return_value={"id": 1},
+        ), mock.patch.object(
+            app_module.db,
+            "content_has_faces",
+            return_value=False,
+        ), mock.patch.object(app_module, "process_post_task") as process_mock:
+            payload = self.client.post(
+                "/api/import/post",
+                json={"url": "https://weibo.cn/comment/5241373692531045"},
+            ).json()
+
+        self.assertEqual(payload["status"], "success")
+        self.assertEqual(payload["images"], 1)
+        extract_mock.assert_called_once_with("https://weibo.cn/comment/5241373692531045")
+        process_mock.assert_called_once()
+
+    def test_collect_weibo_post_routes_to_post_import_without_video_download(self):
+        self._setup_admin()
+        extracted = {
+            "platform": "weibo",
+            "external_id": "5241373692531045",
+            "title": "weibo post",
+            "post_text": "hello from weibo",
+            "image_urls": ["https://wx1.sinaimg.cn/large/a.jpg"],
+            "source_url": "https://weibo.cn/comment/5241373692531045",
+        }
+
+        with mock.patch.object(
+            app_module.collector,
+            "extract_post_metadata",
+            return_value=extracted,
+        ), mock.patch.object(
+            app_module.collector,
+            "download",
+            side_effect=AssertionError("video download should not run"),
+        ) as download_mock, mock.patch.object(
+            app_module.collector,
+            "download_post_images",
+            return_value=[
+                {
+                    "local_path": str(app_config.content_dir / "a.jpg"),
+                    "web_path": "/content/a.jpg",
+                    "source_url": extracted["image_urls"][0],
+                }
+            ],
+        ), mock.patch.object(
+            app_module.db,
+            "upsert_content",
+            return_value={"id": 1},
+        ), mock.patch.object(
+            app_module.db,
+            "content_has_faces",
+            return_value=False,
+        ), mock.patch.object(app_module, "process_post_task") as process_mock:
+            payload = self.client.post(
+                "/api/collect?url=https%3A%2F%2Fweibo.cn%2Fcomment%2F5241373692531045"
+            ).json()
+
+        self.assertEqual(payload["status"], "success")
+        self.assertEqual(payload["images"], 1)
+        download_mock.assert_not_called()
+        process_mock.assert_called_once()
+
+    def test_import_post_reports_weibo_cookie_auth_error(self):
+        self._setup_admin()
+        error = app_module.WeiboAuthenticationError(
+            "微博 Cookie 无效或已过期，请刷新 storage/weibo_cookies.txt 后重试。"
+        )
+
+        with mock.patch.object(
+            app_module.collector,
+            "extract_post_metadata",
+            side_effect=error,
+        ):
+            payload = self.client.post(
+                "/api/import/post",
+                json={"url": "https://weibo.com/1793285524/5241373692531045"},
+            ).json()
+
+        self.assertEqual(payload["status"], "error")
+        self.assertIn("微博 Cookie 无效或已过期", payload["msg"])
+        self.assertNotIn("yt-dlp", payload["msg"])
+
+    def test_collect_weibo_cookie_auth_error_does_not_fall_back_to_video_download(self):
+        self._setup_admin()
+        error = app_module.WeiboAuthenticationError(
+            "微博 Cookie 无效或已过期，请刷新 storage/weibo_cookies.txt 后重试。"
+        )
+
+        with mock.patch.object(
+            app_module.collector,
+            "extract_post_metadata",
+            side_effect=error,
+        ), mock.patch.object(
+            app_module.collector,
+            "download",
+            side_effect=AssertionError("video download should not run"),
+        ) as download_mock:
+            payload = self.client.post(
+                "/api/collect?url=https%3A%2F%2Fweibo.com%2F1793285524%2F5241373692531045"
+            ).json()
+
+        self.assertEqual(payload["status"], "error")
+        self.assertIn("微博 Cookie 无效或已过期", payload["msg"])
+        download_mock.assert_not_called()
 
     def test_source_adapter_config_api_requires_admin_and_persists_config(self):
         config_payload = {

@@ -68,6 +68,34 @@ class VideoCollectorTests(unittest.TestCase):
             "x",
         )
 
+    def test_weibo_post_metadata_uses_weibo_adapter_without_ytdlp(self):
+        calls = []
+
+        def fake_fetch_single_post(url):
+            calls.append(url)
+            return {
+                "platform": "weibo",
+                "content_type": "post",
+                "external_id": "5241373692531045",
+                "title": "post",
+                "post_text": "hello",
+                "image_urls": ["https://wx1.sinaimg.cn/large/a.jpg"],
+                "source_url": url,
+            }
+
+        self.collector.weibo_adapter.fetch_single_post = fake_fetch_single_post
+        self.collector._extract_info = lambda *args, **kwargs: self.fail(
+            "yt-dlp should not be used for Weibo post metadata"
+        )
+
+        result = self.collector.extract_post_metadata(
+            "https://weibo.cn/comment/5241373692531045"
+        )
+
+        self.assertEqual(calls, ["https://weibo.cn/comment/5241373692531045"])
+        self.assertEqual(result["platform"], "weibo")
+        self.assertEqual(result["image_urls"], ["https://wx1.sinaimg.cn/large/a.jpg"])
+
     def test_bilibili_opts_include_impersonate_headers_and_cookiefile(self):
         app_config.bilibili_cookie_path.write_text("SESSDATA=demo", encoding="utf-8")
         self.collector._supports_impersonate_target = lambda target: (True, "supported")
@@ -152,7 +180,7 @@ class VideoCollectorTests(unittest.TestCase):
         message = self.collector._format_bilibili_download_error(
             DownloadError("ERROR: [BiliBili] xxx: Unable to download JSON metadata: HTTP Error 412: Precondition Failed")
         )
-        self.assertIn("downgraded non-impersonate mode", message)
+        self.assertIn("未启用浏览器模拟的降级模式", message)
 
     def test_impersonate_not_available_error_is_rewritten(self):
         self.collector.last_bilibili_impersonate_status = {
@@ -167,7 +195,7 @@ class VideoCollectorTests(unittest.TestCase):
             )
         )
 
-        self.assertIn("does not support it", message)
+        self.assertIn("当前环境不支持", message)
         self.assertIn("curl_cffi", message)
 
     def test_download_fetch_and_extract_metadata_route_through_extract_info(self):

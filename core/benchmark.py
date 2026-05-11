@@ -101,7 +101,7 @@ def _safe_extract_tar(tar, destination):
         try:
             target.relative_to(destination)
         except ValueError:
-            raise RuntimeError(f"Unsafe archive member path: {member.name}")
+            raise RuntimeError(f"压缩包成员路径不安全：{member.name}")
     tar.extractall(destination)
 
 
@@ -134,7 +134,7 @@ def ensure_lfw_deepfunneled_dataset(dataset_path, download_if_missing=True):
         if actual_md5 != LFW_DEEPFUNNELED_MD5:
             archive_path.unlink(missing_ok=True)
             raise RuntimeError(
-                f"LFW archive checksum mismatch: expected {LFW_DEEPFUNNELED_MD5}, got {actual_md5}"
+                f"LFW 压缩包校验失败：期望 {LFW_DEEPFUNNELED_MD5}，实际 {actual_md5}"
             )
 
     extract_parent = dataset_path.parent
@@ -155,8 +155,8 @@ def ensure_lfw_deepfunneled_dataset(dataset_path, download_if_missing=True):
     status["complete"] = counts["identities"] == LFW_EXPECTED_IDENTITIES and counts["images"] == LFW_EXPECTED_IMAGES
     if not status["complete"]:
         raise RuntimeError(
-            "Downloaded LFW deepfunneled dataset is incomplete: "
-            f"{counts['identities']} identities, {counts['images']} images."
+            "下载的 LFW deepfunneled 数据集不完整："
+            f"{counts['identities']} 个身份，{counts['images']} 张图片。"
         )
     return status
 
@@ -716,24 +716,24 @@ def summarize_benchmark(
     )[:3]
 
     lines = [
-        "Benchmark summary",
-        f"- elapsed_seconds: {elapsed_seconds}",
-        f"- clustering_runs: {len(clustering_results)}",
-        f"- retrieval_runs: {len(retrieval_results)}",
-        f"- failed_samples: {len(failures)}",
+        "基准测试摘要",
+        f"- 耗时秒数：{elapsed_seconds}",
+        f"- 聚类运行数：{len(clustering_results)}",
+        f"- 检索运行数：{len(retrieval_results)}",
+        f"- 失败样本数：{len(failures)}",
     ]
 
     if recommended_face_quality:
         lines.append(
-            "- recommended_face_quality: "
+            "- 推荐人脸过滤参数："
             + json.dumps(recommended_face_quality, ensure_ascii=False)
         )
 
     if quality_results:
-        lines.append(f"- face_quality_configs: {len(quality_results)}")
+        lines.append(f"- 人脸过滤配置数：{len(quality_results)}")
 
     if best_clusters:
-        lines.append("- best clustering:")
+        lines.append("- 最优聚类配置：")
         for row in best_clusters:
             lines.append(
                 "  "
@@ -742,7 +742,7 @@ def summarize_benchmark(
             )
 
     if best_retrieval:
-        lines.append("- best retrieval:")
+        lines.append("- 最优检索配置：")
         for row in best_retrieval:
             lines.append(
                 "  "
@@ -751,7 +751,7 @@ def summarize_benchmark(
             )
 
     if failed_clusters:
-        lines.append("- failed clustering configs:")
+        lines.append("- 失败聚类配置：")
         for row in failed_clusters[:5]:
             lines.append(
                 "  "

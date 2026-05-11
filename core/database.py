@@ -7,6 +7,7 @@ import secrets
 import sqlite3
 from pathlib import Path
 
+import cv2
 import faiss
 import numpy as np
 
@@ -37,6 +38,85 @@ class DatabaseManager:
         if norm > 0:
             vector = vector / norm
         return vector.astype(np.float32)
+
+    def _compute_laplacian_variance(self, image, blur_eval_size=96):
+        if image is None or image.size == 0:
+            return 0.0
+
+        eval_size = max(int(blur_eval_size or 96), 1)
+        if image.shape[0] != eval_size or image.shape[1] != eval_size:
+            image = cv2.resize(
+                image,
+                (eval_size, eval_size),
+                interpolation=cv2.INTER_AREA
+                if image.shape[0] > eval_size or image.shape[1] > eval_size
+                else cv2.INTER_LINEAR,
+            )
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        return float(cv2.Laplacian(gray, cv2.CV_64F).var())
+
+    def _score_face_quality(self, face_min_side, face_area, face_ratio, laplacian_var, pose_deviation):
+        min_side = max(float(face_min_side or 0), 0.0)
+        area = max(float(face_area or 0), 0.0)
+        ratio = max(float(face_ratio or 0.0), 0.0)
+        blur = max(float(laplacian_var or 0.0), 0.0)
+        pose = min(max(float(pose_deviation if pose_deviation is not None else 0.5), 0.0), 1.0)
+        return float(
+            min_side * 2.0
+            + np.sqrt(area)
+            + min(blur, 1000.0) / 5.0
+            + ratio * 100.0
+            - pose * 100.0
+        )
+
+    def _normalize_face_metrics(self, face_metrics=None):
+        metrics = face_metrics or {}
+        face_min_side = int(metrics.get("min_face_size") or metrics.get("min_side") or 0)
+        face_area = int(metrics.get("area") or max(face_min_side, 0) * max(face_min_side, 0))
+        face_ratio = float(metrics.get("face_ratio") or 0.0)
+        laplacian_var = float(metrics.get("laplacian_var") or 0.0)
+        pose_deviation = float(metrics.get("pose_deviation", 0.5))
+        quality_score = self._score_face_quality(
+            face_min_side,
+            face_area,
+            face_ratio,
+            laplacian_var,
+            pose_deviation,
+        )
+        return {
+            "face_min_side": face_min_side,
+            "face_area": face_area,
+            "face_ratio": face_ratio,
+            "laplacian_var": laplacian_var,
+            "pose_deviation": pose_deviation,
+            "quality_score": quality_score,
+        }
+
+    def _compute_stored_face_quality(self, image_path):
+        path = app_config.resolve_managed_path(image_path)
+        image = cv2.imread(str(path)) if path is not None and Path(path).exists() else None
+        if image is None or image.size == 0:
+            return self._normalize_face_metrics(
+                {
+                    "min_face_size": 0,
+                    "area": 0,
+                    "face_ratio": 0.0,
+                    "laplacian_var": 0.0,
+                    "pose_deviation": 1.0,
+                }
+            )
+
+        height, width = image.shape[:2]
+        min_side = int(min(width, height))
+        return self._normalize_face_metrics(
+            {
+                "min_face_size": min_side,
+                "area": int(width * height),
+                "face_ratio": 0.0,
+                "laplacian_var": self._compute_laplacian_variance(image),
+                "pose_deviation": 0.5,
+            }
+        )
 
     def _new_index(self):
         return faiss.IndexIDMap(faiss.IndexFlatIP(self.dimension))
@@ -178,6 +258,12 @@ class DatabaseManager:
             ("post_text", "TEXT"),
             ("semantic_text", "TEXT"),
             ("semantic_source", "TEXT"),
+            ("face_min_side", "INTEGER"),
+            ("face_area", "INTEGER"),
+            ("face_ratio", "REAL"),
+            ("laplacian_var", "REAL"),
+            ("pose_deviation", "REAL"),
+            ("quality_score", "REAL"),
         ):
             self._ensure_column("faces", column_name, definition)
 
@@ -195,20 +281,20 @@ class DatabaseManager:
         cleaned = str(username or "").strip()
         if not USERNAME_RE.match(cleaned):
             raise ValueError(
-                "Username must be 3-32 ASCII letters, numbers, underscores, dots, or hyphens."
+                "用户名必须为 3-32 位 ASCII 字母、数字、下划线、点或连字符。"
             )
         return cleaned
 
     def _validate_role(self, role):
         cleaned = str(role or "").strip().lower()
         if cleaned not in USER_ROLES:
-            raise ValueError("Role must be user or admin.")
+            raise ValueError("角色必须是普通用户或管理员。")
         return cleaned
 
     def _hash_password(self, password):
         cleaned = str(password or "")
         if len(cleaned) < 6:
-            raise ValueError("Password must be at least 6 characters.")
+            raise ValueError("密码至少需要 6 个字符。")
         salt = secrets.token_hex(16)
         password_hash = hashlib.pbkdf2_hmac(
             "sha256",
@@ -239,7 +325,7 @@ class DatabaseManager:
         with self._connect() as conn:
             count = conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
             if count:
-                raise ValueError("Initial administrator is already set.")
+                raise ValueError("初始管理员已创建。")
             conn.execute(
                 """
                 INSERT INTO users (username, password_hash, salt, iterations, role, enabled)
@@ -302,7 +388,7 @@ class DatabaseManager:
                     (username, password_hash, salt, iterations, role, 1 if enabled else 0),
                 )
             except sqlite3.IntegrityError as exc:
-                raise ValueError("Username already exists.") from exc
+                raise ValueError("用户名已存在。") from exc
             row = conn.execute(
                 "SELECT * FROM users WHERE username = ?", (username,)
             ).fetchone()
@@ -321,14 +407,14 @@ class DatabaseManager:
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
             if row is None:
-                raise ValueError("User not found.")
+                raise ValueError("用户不存在。")
 
             next_role = row["role"] if role is None else self._validate_role(role)
             next_enabled = int(row["enabled"] if enabled is None else bool(enabled))
             if row["role"] == "admin" and int(row["enabled"] or 0):
                 would_remove_admin = next_role != "admin" or not next_enabled
                 if would_remove_admin and self._enabled_admin_count(conn) <= 1:
-                    raise ValueError("Cannot disable or demote the last enabled administrator.")
+                    raise ValueError("不能禁用或降级最后一个启用的管理员。")
 
             conn.execute(
                 """
@@ -346,7 +432,7 @@ class DatabaseManager:
         with self._connect() as conn:
             row = conn.execute("SELECT * FROM users WHERE id = ?", (int(user_id),)).fetchone()
             if row is None:
-                raise ValueError("User not found.")
+                raise ValueError("用户不存在。")
             conn.execute(
                 """
                 UPDATE users
@@ -670,6 +756,45 @@ class DatabaseManager:
         )
         return int(cursor.rowcount or 0)
 
+    def backfill_missing_face_quality(self, limit=None):
+        query = """
+            SELECT id, image_path
+            FROM faces
+            WHERE quality_score IS NULL OR face_min_side IS NULL
+            ORDER BY id ASC
+        """
+        params = []
+        if limit is not None:
+            query += " LIMIT ?"
+            params.append(int(limit))
+
+        with self._connect() as conn:
+            rows = conn.execute(query, params).fetchall()
+            for row in rows:
+                metrics = self._compute_stored_face_quality(row["image_path"])
+                conn.execute(
+                    """
+                    UPDATE faces
+                    SET face_min_side = ?,
+                        face_area = ?,
+                        face_ratio = ?,
+                        laplacian_var = ?,
+                        pose_deviation = ?,
+                        quality_score = ?
+                    WHERE id = ?
+                    """,
+                    (
+                        metrics["face_min_side"],
+                        metrics["face_area"],
+                        metrics["face_ratio"],
+                        metrics["laplacian_var"],
+                        metrics["pose_deviation"],
+                        metrics["quality_score"],
+                        row["id"],
+                    ),
+                )
+        return len(rows)
+
     def clear_cluster_snapshots(self):
         with self._connect() as conn:
             cursor = conn.execute("DELETE FROM cluster_snapshots")
@@ -844,12 +969,15 @@ class DatabaseManager:
         with self._connect() as conn:
             rows = conn.execute(
                 f"""
-                SELECT id, content_id, content_type, platform, external_id, video_id,
-                       timestamp, image_path, full_image_path, source_url, description,
-                       visual_text, subtitle_text, asr_text, post_text,
-                       semantic_text, semantic_source, person_id
-                FROM faces
-                WHERE id IN ({placeholders})
+                SELECT f.id, f.content_id, f.content_type, f.platform, f.external_id, f.video_id,
+                       f.timestamp, f.image_path, f.full_image_path, f.source_url, f.description,
+                       f.visual_text, f.subtitle_text, f.asr_text, f.post_text,
+                       f.semantic_text, f.semantic_source, f.person_id, p.name AS person_name,
+                       f.face_min_side, f.face_area, f.face_ratio, f.laplacian_var,
+                       f.pose_deviation, f.quality_score
+                FROM faces f
+                LEFT JOIN people p ON f.person_id = p.person_id
+                WHERE f.id IN ({placeholders})
                 """,
                 face_id_list,
             ).fetchall()
@@ -874,10 +1002,12 @@ class DatabaseManager:
         post_text="",
         semantic_text="",
         semantic_source=None,
+        face_metrics=None,
     ):
         embedding = self._normalize_embedding(embedding)
         semantic_text = semantic_text or description or ""
         semantic_source_json = json.dumps(semantic_source or [], ensure_ascii=False)
+        quality = self._normalize_face_metrics(face_metrics)
 
         with self._connect() as conn:
             cursor = conn.cursor()
@@ -887,8 +1017,10 @@ class DatabaseManager:
                     content_id, content_type, platform, external_id,
                     video_id, timestamp, image_path, full_image_path,
                     source_url, description, visual_text, subtitle_text,
-                    asr_text, post_text, semantic_text, semantic_source, embedding
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    asr_text, post_text, semantic_text, semantic_source,
+                    face_min_side, face_area, face_ratio, laplacian_var,
+                    pose_deviation, quality_score, embedding
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     content_id,
@@ -907,6 +1039,12 @@ class DatabaseManager:
                     post_text,
                     semantic_text,
                     semantic_source_json,
+                    quality["face_min_side"],
+                    quality["face_area"],
+                    quality["face_ratio"],
+                    quality["laplacian_var"],
+                    quality["pose_deviation"],
+                    quality["quality_score"],
                     embedding.tobytes(),
                 ),
             )
@@ -927,12 +1065,15 @@ class DatabaseManager:
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT id, content_id, content_type, platform, external_id, video_id,
-                       timestamp, image_path, full_image_path, source_url, description,
-                       visual_text, subtitle_text, asr_text, post_text,
-                       semantic_text, semantic_source, person_id
-                FROM faces
-                ORDER BY id ASC
+                SELECT f.id, f.content_id, f.content_type, f.platform, f.external_id, f.video_id,
+                       f.timestamp, f.image_path, f.full_image_path, f.source_url, f.description,
+                       f.visual_text, f.subtitle_text, f.asr_text, f.post_text,
+                       f.semantic_text, f.semantic_source, f.person_id, p.name AS person_name,
+                       f.face_min_side, f.face_area, f.face_ratio, f.laplacian_var,
+                       f.pose_deviation, f.quality_score
+                FROM faces f
+                LEFT JOIN people p ON f.person_id = p.person_id
+                ORDER BY f.id ASC
                 """
             ).fetchall()
         return [dict(row) for row in rows]
@@ -1061,15 +1202,31 @@ class DatabaseManager:
                 )
 
     def get_clustered_people(self):
+        self.backfill_missing_face_quality()
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT f.person_id, COUNT(f.id) AS count, MIN(f.image_path) AS cover_image, p.name
-                FROM faces f
-                LEFT JOIN people p ON f.person_id = p.person_id
-                WHERE f.person_id != -1
-                GROUP BY f.person_id
-                ORDER BY count DESC
+                SELECT grouped.person_id,
+                       grouped.count,
+                       (
+                           SELECT f2.image_path
+                           FROM faces f2
+                           WHERE f2.person_id = grouped.person_id
+                           ORDER BY COALESCE(f2.quality_score, -999999.0) DESC,
+                                    COALESCE(f2.face_min_side, 0) DESC,
+                                    COALESCE(f2.laplacian_var, 0.0) DESC,
+                                    f2.id ASC
+                           LIMIT 1
+                       ) AS cover_image,
+                       p.name
+                FROM (
+                    SELECT person_id, COUNT(id) AS count
+                    FROM faces
+                    WHERE person_id != -1
+                    GROUP BY person_id
+                ) grouped
+                LEFT JOIN people p ON grouped.person_id = p.person_id
+                ORDER BY grouped.count DESC, grouped.person_id ASC
                 """
             ).fetchall()
         return [dict(row) for row in rows]
@@ -1078,15 +1235,42 @@ class DatabaseManager:
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT id, content_id, content_type, platform, external_id, video_id,
-                       timestamp, image_path, full_image_path, source_url, description,
-                       visual_text, subtitle_text, asr_text, post_text,
-                       semantic_text, semantic_source, person_id
-                FROM faces
-                WHERE person_id = ?
-                ORDER BY timestamp ASC, id ASC
+                SELECT f.id, f.content_id, f.content_type, f.platform, f.external_id, f.video_id,
+                       f.timestamp, f.image_path, f.full_image_path, f.source_url, f.description,
+                       f.visual_text, f.subtitle_text, f.asr_text, f.post_text,
+                       f.semantic_text, f.semantic_source, f.person_id, p.name AS person_name,
+                       f.face_min_side, f.face_area, f.face_ratio, f.laplacian_var,
+                       f.pose_deviation, f.quality_score
+                FROM faces f
+                LEFT JOIN people p ON f.person_id = p.person_id
+                WHERE f.person_id = ?
+                ORDER BY f.timestamp ASC, f.id ASC
                 """,
                 (person_id,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def get_faces_for_person_ids(self, person_ids):
+        cleaned_ids = [int(person_id) for person_id in person_ids]
+        if not cleaned_ids:
+            return []
+
+        placeholders = ",".join("?" for _ in cleaned_ids)
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT f.id, f.content_id, f.content_type, f.platform, f.external_id, f.video_id,
+                       f.timestamp, f.image_path, f.full_image_path, f.source_url, f.description,
+                       f.visual_text, f.subtitle_text, f.asr_text, f.post_text,
+                       f.semantic_text, f.semantic_source, f.person_id, p.name AS person_name,
+                       f.face_min_side, f.face_area, f.face_ratio, f.laplacian_var,
+                       f.pose_deviation, f.quality_score, f.created_at
+                FROM faces f
+                LEFT JOIN people p ON f.person_id = p.person_id
+                WHERE f.person_id IN ({placeholders})
+                ORDER BY f.created_at DESC, f.id DESC
+                """,
+                cleaned_ids,
             ).fetchall()
         return [dict(row) for row in rows]
 
@@ -1094,13 +1278,16 @@ class DatabaseManager:
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT id, content_id, content_type, platform, external_id, video_id,
-                       timestamp, image_path, full_image_path, source_url, description,
-                       visual_text, subtitle_text, asr_text, post_text,
-                       semantic_text, semantic_source, person_id
-                FROM faces
-                WHERE person_id = -1
-                ORDER BY created_at DESC
+                SELECT f.id, f.content_id, f.content_type, f.platform, f.external_id, f.video_id,
+                       f.timestamp, f.image_path, f.full_image_path, f.source_url, f.description,
+                       f.visual_text, f.subtitle_text, f.asr_text, f.post_text,
+                       f.semantic_text, f.semantic_source, f.person_id, p.name AS person_name,
+                       f.face_min_side, f.face_area, f.face_ratio, f.laplacian_var,
+                       f.pose_deviation, f.quality_score
+                FROM faces f
+                LEFT JOIN people p ON f.person_id = p.person_id
+                WHERE f.person_id = -1
+                ORDER BY f.created_at DESC
                 LIMIT 50
                 """
             ).fetchall()

@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import cv2
 import numpy as np
 
 import core.database as database_module
@@ -117,6 +118,102 @@ class DatabaseSnapshotTests(unittest.TestCase):
             faces = db.get_all_faces()
             self.assertEqual([face["person_id"] for face in faces], [1, 2])
             self.assertEqual(db.get_person_name_map(), {1: "Alice", 2: "Bob"})
+        finally:
+            del db
+            gc.collect()
+
+    def test_clustered_people_cover_uses_highest_quality_face(self):
+        db = DatabaseManager()
+        try:
+            vector = np.ones(512, dtype=np.float32)
+            low_face = db.add_face(
+                video_id="v1",
+                timestamp=0.0,
+                image_path="/faces/a_low.jpg",
+                full_image_path="/faces/a_low_full.jpg",
+                source_url="https://example.com/low",
+                embedding=vector,
+                description="low quality",
+                face_metrics={
+                    "min_face_size": 40,
+                    "area": 1600,
+                    "face_ratio": 0.03,
+                    "laplacian_var": 20,
+                    "pose_deviation": 0.7,
+                },
+            )
+            high_face = db.add_face(
+                video_id="v2",
+                timestamp=1.0,
+                image_path="/faces/z_high.jpg",
+                full_image_path="/faces/z_high_full.jpg",
+                source_url="https://example.com/high",
+                embedding=vector,
+                description="high quality",
+                face_metrics={
+                    "min_face_size": 120,
+                    "area": 14400,
+                    "face_ratio": 0.08,
+                    "laplacian_var": 240,
+                    "pose_deviation": 0.1,
+                },
+            )
+            db.update_person_ids([(1, low_face), (1, high_face)])
+
+            people = db.get_clustered_people()
+
+            self.assertEqual(people[0]["cover_image"], "/faces/z_high.jpg")
+        finally:
+            del db
+            gc.collect()
+
+    def test_backfill_missing_face_quality_uses_stored_crop_and_handles_missing_file(self):
+        db = DatabaseManager()
+        try:
+            vector = np.ones(512, dtype=np.float32)
+            image_path = app_config.faces_dir / "sharp_face.jpg"
+            sharp = np.zeros((80, 80, 3), dtype=np.uint8)
+            sharp[::2, :] = 255
+            cv2.imwrite(str(image_path), sharp)
+
+            good_face = db.add_face(
+                video_id="v1",
+                timestamp=0.0,
+                image_path="/faces/sharp_face.jpg",
+                full_image_path="/faces/sharp_full.jpg",
+                source_url="https://example.com/good",
+                embedding=vector,
+                description="sharp",
+            )
+            missing_face = db.add_face(
+                video_id="v2",
+                timestamp=1.0,
+                image_path="/faces/missing_face.jpg",
+                full_image_path="/faces/missing_full.jpg",
+                source_url="https://example.com/missing",
+                embedding=vector,
+                description="missing",
+            )
+            db.update_person_ids([(1, good_face), (1, missing_face)])
+            with db._connect() as conn:
+                conn.execute(
+                    """
+                    UPDATE faces
+                    SET face_min_side = NULL,
+                        face_area = NULL,
+                        face_ratio = NULL,
+                        laplacian_var = NULL,
+                        pose_deviation = NULL,
+                        quality_score = NULL
+                    """
+                )
+
+            people = db.get_clustered_people()
+            faces = {item["id"]: item for item in db.get_all_faces()}
+
+            self.assertEqual(people[0]["cover_image"], "/faces/sharp_face.jpg")
+            self.assertGreater(faces[good_face]["quality_score"], faces[missing_face]["quality_score"])
+            self.assertIsNotNone(faces[missing_face]["quality_score"])
         finally:
             del db
             gc.collect()
