@@ -12,14 +12,20 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from core.benchmark import export_benchmark_results
+from core.benchmark import export_sample_manifest
 from core.benchmark import build_controlled_face_quality_grid
 from core.benchmark import build_face_quality_grid
+from core.benchmark import build_thesis_cluster_grid
+from core.benchmark import build_thesis_face_quality_grid
 from core.benchmark import evaluate_face_quality_grid
+from core.benchmark import evaluate_cluster_ablation
 from core.benchmark import ensure_lfw_deepfunneled_dataset
 from core.benchmark import extract_dataset_embeddings
 from core.benchmark import get_runtime_device_report
 from core.benchmark import run_benchmark_suite
+from core.benchmark import sample_identity_dataset
 from core.benchmark import summarize_benchmark
+from core.benchmark import THESIS_SAMPLE_CONFIG
 
 
 LOG_FORMAT = "[%(asctime)s] [%(levelname)s] [%(name)s] %(message)s"
@@ -61,8 +67,21 @@ def build_arg_parser():
     parser.add_argument("--min-samples-grid", default="2,3")
     parser.add_argument("--top-k", type=int, default=5)
     parser.add_argument("--retrieval-backend", choices=["auto", "torch-cuda", "numpy"], default="auto")
+    parser.add_argument("--experiment-preset", choices=["full", "thesis-small"], default="full")
+    parser.add_argument("--sample-identities", type=int, default=0)
+    parser.add_argument(
+        "--sample-min-images-per-identity",
+        type=int,
+        default=THESIS_SAMPLE_CONFIG["min_images_per_identity"],
+    )
+    parser.add_argument(
+        "--sample-max-images-per-identity",
+        type=int,
+        default=THESIS_SAMPLE_CONFIG["max_images_per_identity"],
+    )
+    parser.add_argument("--sample-seed", type=int, default=THESIS_SAMPLE_CONFIG["seed"])
     parser.add_argument("--skip-quality-grid", action="store_true")
-    parser.add_argument("--quality-grid-preset", choices=["controlled", "default"], default="controlled")
+    parser.add_argument("--quality-grid-preset", choices=["controlled", "default", "thesis"], default="controlled")
     parser.add_argument("--quality-min-face-sizes", default="40,56,72")
     parser.add_argument("--quality-min-face-ratios", default="0.02,0.035,0.05")
     parser.add_argument("--quality-min-laplacian-vars", default="0,50,80,120")
@@ -72,9 +91,10 @@ def build_arg_parser():
     return parser
 
 
-def _default_output_dir():
+def _default_output_dir(experiment_preset="full"):
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return REPO_ROOT / "storage" / "benchmarks" / f"lfw_deepfunneled_full_{timestamp}"
+    preset_name = "thesis_small" if experiment_preset == "thesis-small" else "full"
+    return REPO_ROOT / "storage" / "benchmarks" / f"lfw_deepfunneled_{preset_name}_{timestamp}"
 
 
 def _write_benchmark_run(path, payload):
@@ -91,7 +111,7 @@ def main():
     output_dir = (
         Path(args.output_dir).expanduser().resolve()
         if args.output_dir
-        else _default_output_dir().resolve()
+        else _default_output_dir(args.experiment_preset).resolve()
     )
     output_dir.mkdir(parents=True, exist_ok=True)
     run_json_path = output_dir / "benchmark_run.json"
@@ -105,13 +125,34 @@ def main():
     min_face_ratios = _parse_csv_values(args.quality_min_face_ratios, float)
     min_laplacian_vars = _parse_csv_values(args.quality_min_laplacian_vars, float)
     max_pose_deviations = _parse_csv_values(args.quality_max_pose_deviations, float)
+    quality_grid_preset = args.quality_grid_preset
+    if args.experiment_preset == "thesis-small" and quality_grid_preset == "controlled":
+        quality_grid_preset = "thesis"
 
     dataset_status = ensure_lfw_deepfunneled_dataset(
         args.dataset_path,
         download_if_missing=not args.no_download_dataset,
     )
+    sample_payload = None
+    sampled_identities = None
+    sample_config = None
+    sample_identities = args.sample_identities
+    if args.experiment_preset == "thesis-small" and sample_identities <= 0:
+        sample_identities = THESIS_SAMPLE_CONFIG["sample_identities"]
+    if sample_identities > 0:
+        sample_payload = sample_identity_dataset(
+            args.dataset_path,
+            sample_identities=sample_identities,
+            min_images_per_identity=args.sample_min_images_per_identity,
+            max_images_per_identity=args.sample_max_images_per_identity,
+            seed=args.sample_seed,
+        )
+        sampled_identities = sample_payload["identities"]
+        sample_config = sample_payload["sample_config"]
+    sample_manifest_outputs = export_sample_manifest(output_dir, sample_payload)
     device_report = get_runtime_device_report()
     run_metadata = {
+        "experiment_preset": args.experiment_preset,
         "dataset_path": str(Path(args.dataset_path).expanduser().resolve()),
         "output_dir": str(output_dir),
         "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -121,8 +162,12 @@ def main():
         "min_samples_grid": min_samples_grid,
         "top_k": max(int(args.top_k), 1),
         "retrieval_backend": args.retrieval_backend,
-        "quality_grid_preset": args.quality_grid_preset,
+        "quality_grid_preset": quality_grid_preset,
         "skip_quality_grid": bool(args.skip_quality_grid),
+        "sample_config": sample_config,
+        "sample_manifest": sample_manifest_outputs,
+        "sampled_identities": sample_payload.get("sampled_identities") if sample_payload else None,
+        "sampled_images": sample_payload.get("sampled_images") if sample_payload else None,
         "dataset_status": dataset_status,
         "device_report": device_report,
     }
@@ -137,6 +182,8 @@ def main():
         cache_path=cache_path,
         failures_path=failures_path,
         refresh_cache=args.refresh_cache,
+        identities=sampled_identities,
+        sample_config=sample_config,
     )
     if len(dataset_payload["embeddings"]) < 2:
         parser.error("数据集中有效人脸向量不足，无法运行基准测试。")
@@ -153,8 +200,10 @@ def main():
     )
     quality_payload = {"results": None, "recommended_face_quality": None}
     if not args.skip_quality_grid:
-        if args.quality_grid_preset == "controlled":
+        if quality_grid_preset == "controlled":
             quality_grid = build_controlled_face_quality_grid()
+        elif quality_grid_preset == "thesis":
+            quality_grid = build_thesis_face_quality_grid()
         else:
             quality_grid = build_face_quality_grid(
                 min_face_size_values=min_face_sizes,
@@ -173,6 +222,15 @@ def main():
             cache_dir=quality_cache_dir,
             refresh_cache=args.refresh_cache,
             retrieval_backend=args.retrieval_backend,
+            identities=sampled_identities,
+            sample_config=sample_config,
+        )
+    cluster_ablation_results = None
+    if args.experiment_preset == "thesis-small":
+        cluster_ablation_results = evaluate_cluster_ablation(
+            dataset_payload["embeddings"],
+            dataset_payload["label_ids"],
+            cluster_grid=build_thesis_cluster_grid(),
         )
     exported = export_benchmark_results(
         output_dir,
@@ -180,6 +238,10 @@ def main():
         benchmark_payload["retrieval_results"],
         dataset_payload["failures"],
         quality_results=quality_payload["results"],
+        quality_ablation_results=quality_payload["results"]
+        if quality_grid_preset == "thesis"
+        else None,
+        cluster_ablation_results=cluster_ablation_results,
     )
 
     summary = summarize_benchmark(
@@ -197,11 +259,18 @@ def main():
             "elapsed_seconds": round(time.perf_counter() - started_at, 3),
             "embedding_cache": str(cache_path),
             "outputs": exported,
+            "default_face_quality": build_thesis_face_quality_grid()[0]
+            if args.experiment_preset == "thesis-small"
+            else None,
+            "default_cluster_config": build_thesis_cluster_grid()[0]
+            if args.experiment_preset == "thesis-small"
+            else None,
             "samples_kept": int(len(dataset_payload["embeddings"])),
             "failed_samples": int(len(dataset_payload["failures"])),
             "from_cache": bool(dataset_payload.get("from_cache")),
             "recommended_face_quality": quality_payload["recommended_face_quality"],
             "retrieval_results": benchmark_payload["retrieval_results"],
+            "cluster_ablation_results": cluster_ablation_results,
         }
     )
     _write_benchmark_run(run_json_path, run_metadata)

@@ -437,6 +437,32 @@ class DatabaseSnapshotTests(unittest.TestCase):
             del db
             gc.collect()
 
+    def test_upsert_content_with_status_reports_existing_identity(self):
+        db = DatabaseManager()
+        try:
+            first, first_created = db.upsert_content_with_status(
+                platform="weibo",
+                external_id="5241373692531045",
+                content_type="post",
+                title="first",
+                source_url="https://weibo.cn/comment/5241373692531045",
+            )
+            second, second_created = db.upsert_content_with_status(
+                platform="weibo",
+                external_id="5241373692531045",
+                content_type="post",
+                title="second",
+                source_url="https://weibo.cn/comment/5241373692531045",
+            )
+
+            self.assertTrue(first_created)
+            self.assertFalse(second_created)
+            self.assertEqual(second["id"], first["id"])
+            self.assertEqual(second["title"], "second")
+        finally:
+            del db
+            gc.collect()
+
     def test_reset_database_state_and_config_defaults(self):
         db = DatabaseManager()
         try:

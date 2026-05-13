@@ -18,6 +18,96 @@ INDEX_PATH = str(app_config.storage_dir / "face_index.faiss")
 USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,32}$")
 PASSWORD_ITERATIONS = 200_000
 USER_ROLES = {"user", "admin"}
+DATABASE_BROWSER_TABLES = {
+    "contents": {
+        "columns": [
+            "id",
+            "platform",
+            "external_id",
+            "content_type",
+            "title",
+            "source_url",
+            "local_path",
+            "subtitle_path",
+            "asr_path",
+            "post_text",
+            "metadata_json",
+            "collection_source_id",
+            "created_at",
+            "last_processed_at",
+        ],
+        "order_by": "id DESC",
+    },
+    "faces": {
+        "columns": [
+            "id",
+            "content_id",
+            "content_type",
+            "platform",
+            "external_id",
+            "video_id",
+            "timestamp",
+            "image_path",
+            "full_image_path",
+            "source_url",
+            "description",
+            "visual_text",
+            "subtitle_text",
+            "asr_text",
+            "post_text",
+            "semantic_text",
+            "semantic_source",
+            "person_id",
+            "face_min_side",
+            "face_area",
+            "face_ratio",
+            "laplacian_var",
+            "pose_deviation",
+            "quality_score",
+            "created_at",
+        ],
+        "order_by": "id DESC",
+    },
+    "people": {
+        "columns": ["person_id", "name"],
+        "order_by": "person_id ASC",
+    },
+    "collection_sources": {
+        "columns": [
+            "id",
+            "platform",
+            "source_type",
+            "source_url",
+            "title",
+            "enabled",
+            "last_synced_at",
+            "metadata_json",
+            "created_at",
+        ],
+        "order_by": "id DESC",
+    },
+    "cluster_snapshots": {
+        "select": [
+            "slot",
+            "created_at",
+            "cluster_config_json",
+            "LENGTH(face_assignments_json) AS face_assignments_bytes",
+            "LENGTH(people_json) AS people_bytes",
+        ],
+        "columns": [
+            "slot",
+            "created_at",
+            "cluster_config_json",
+            "face_assignments_bytes",
+            "people_bytes",
+        ],
+        "order_by": "slot ASC",
+    },
+    "users": {
+        "columns": ["id", "username", "role", "enabled", "created_at", "updated_at"],
+        "order_by": "role = 'admin' DESC, username COLLATE NOCASE ASC",
+    },
+}
 
 
 class DatabaseManager:
@@ -374,6 +464,55 @@ class DatabaseManager:
             ).fetchall()
         return [self._serialize_user_row(row) for row in rows]
 
+    def list_database_browser_tables(self):
+        with self._connect() as conn:
+            tables = []
+            for table_name in DATABASE_BROWSER_TABLES:
+                total = int(
+                    conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0]
+                    or 0
+                )
+                tables.append({"name": table_name, "total": total})
+        return tables
+
+    def browse_database_table(self, table_name, page=1, page_size=20):
+        table_name = str(table_name or "contents").strip()
+        if table_name not in DATABASE_BROWSER_TABLES:
+            raise ValueError("Unsupported database table.")
+
+        page = max(int(page or 1), 1)
+        page_size = min(max(int(page_size or 20), 1), 100)
+        offset = (page - 1) * page_size
+        table_config = DATABASE_BROWSER_TABLES[table_name]
+        select_columns = table_config.get("select") or table_config["columns"]
+        columns = table_config["columns"]
+        select_clause = ", ".join(select_columns)
+        order_by = table_config["order_by"]
+
+        with self._connect() as conn:
+            total = int(
+                conn.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0] or 0
+            )
+            rows = conn.execute(
+                f"""
+                SELECT {select_clause}
+                FROM {table_name}
+                ORDER BY {order_by}
+                LIMIT ? OFFSET ?
+                """,
+                (page_size, offset),
+            ).fetchall()
+
+        return {
+            "table": table_name,
+            "columns": columns,
+            "rows": [dict(row) for row in rows],
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "tables": self.list_database_browser_tables(),
+        }
+
     def create_user(self, username, password, role="user", enabled=True):
         username = self._validate_username(username)
         role = self._validate_role(role)
@@ -504,11 +643,41 @@ class DatabaseManager:
         metadata=None,
         collection_source_id=None,
     ):
+        content, _created = self.upsert_content_with_status(
+            platform=platform,
+            external_id=external_id,
+            content_type=content_type,
+            title=title,
+            source_url=source_url,
+            local_path=local_path,
+            subtitle_path=subtitle_path,
+            asr_path=asr_path,
+            post_text=post_text,
+            metadata=metadata,
+            collection_source_id=collection_source_id,
+        )
+        return content
+
+    def upsert_content_with_status(
+        self,
+        platform,
+        external_id,
+        content_type,
+        title="",
+        source_url="",
+        local_path="",
+        subtitle_path="",
+        asr_path="",
+        post_text="",
+        metadata=None,
+        collection_source_id=None,
+    ):
         metadata_json = (
             json.dumps(metadata or {}, ensure_ascii=False)
             if metadata is not None
             else None
         )
+        created = False
         with self._connect() as conn:
             existing = conn.execute(
                 """
@@ -559,33 +728,45 @@ class DatabaseManager:
                 )
                 content_id = existing["id"]
             else:
-                cursor = conn.execute(
-                    """
-                    INSERT INTO contents (
-                        platform, external_id, content_type, title, source_url,
-                        local_path, subtitle_path, asr_path, post_text, metadata_json,
-                        collection_source_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        platform,
-                        external_id,
-                        content_type,
-                        title,
-                        source_url,
-                        local_path,
-                        subtitle_path,
-                        asr_path,
-                        post_text,
-                        metadata_json or json.dumps({}, ensure_ascii=False),
-                        int(collection_source_id)
-                        if collection_source_id is not None
-                        else None,
-                    ),
-                )
-                content_id = cursor.lastrowid
+                try:
+                    cursor = conn.execute(
+                        """
+                        INSERT INTO contents (
+                            platform, external_id, content_type, title, source_url,
+                            local_path, subtitle_path, asr_path, post_text, metadata_json,
+                            collection_source_id
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            platform,
+                            external_id,
+                            content_type,
+                            title,
+                            source_url,
+                            local_path,
+                            subtitle_path,
+                            asr_path,
+                            post_text,
+                            metadata_json or json.dumps({}, ensure_ascii=False),
+                            int(collection_source_id)
+                            if collection_source_id is not None
+                            else None,
+                        ),
+                    )
+                    content_id = cursor.lastrowid
+                    created = True
+                except sqlite3.IntegrityError:
+                    existing = conn.execute(
+                        """
+                        SELECT * FROM contents WHERE platform = ? AND external_id = ?
+                        """,
+                        (platform, external_id),
+                    ).fetchone()
+                    if existing is None:
+                        raise
+                    content_id = existing["id"]
 
-        return self.get_content_by_id(content_id)
+        return self.get_content_by_id(content_id), created
 
     def update_content_paths(
         self,

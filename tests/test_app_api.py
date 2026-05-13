@@ -189,6 +189,94 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(people_payload["status"], "error")
         self.assertTrue(people_payload["auth_required"])
 
+    def test_database_browser_requires_admin(self):
+        unauthenticated_payload = self.client.get("/api/admin/database/table").json()
+
+        self._setup_admin()
+        self._create_user()
+        self.client.post("/api/auth/logout")
+        self._login_user()
+        user_payload = self.client.get("/api/admin/database/table").json()
+
+        self.assertEqual(unauthenticated_payload["status"], "error")
+        self.assertTrue(unauthenticated_payload["auth_required"])
+        self.assertTrue(unauthenticated_payload["admin_required"])
+        self.assertEqual(user_payload["status"], "error")
+        self.assertTrue(user_payload["admin_required"])
+
+    def test_admin_database_browser_filters_and_paginates_tables(self):
+        self._setup_admin()
+        self._create_user()
+        first_content, _ = app_module.db.upsert_content_with_status(
+            platform="weibo",
+            external_id="post-1",
+            content_type="post",
+            title="First post",
+            source_url="https://example.com/post-1",
+            post_text="first",
+        )
+        app_module.db.upsert_content_with_status(
+            platform="weibo",
+            external_id="post-2",
+            content_type="post",
+            title="Second post",
+            source_url="https://example.com/post-2",
+            post_text="second",
+        )
+        face_id = app_module.db.add_face(
+            video_id="v1",
+            timestamp=0.0,
+            image_path="/faces/a.jpg",
+            full_image_path="/faces/a_full.jpg",
+            source_url="https://example.com/post-1",
+            embedding=np.ones(512, dtype=np.float32),
+            description="Alice face",
+            content_id=first_content["id"],
+            content_type="post",
+            platform="weibo",
+            external_id="post-1",
+        )
+        app_module.db.update_person_ids([(1, face_id)])
+        app_module.db.rename_person(1, "Alice")
+
+        contents_payload = self.client.get(
+            "/api/admin/database/table?table=contents&page=1&page_size=1"
+        ).json()
+        faces_payload = self.client.get("/api/admin/database/table?table=faces").json()
+        people_payload = self.client.get("/api/admin/database/table?table=people").json()
+        snapshots_payload = self.client.get(
+            "/api/admin/database/table?table=cluster_snapshots"
+        ).json()
+        users_payload = self.client.get("/api/admin/database/table?table=users").json()
+        invalid_payload = self.client.get(
+            "/api/admin/database/table?table=sqlite_master"
+        ).json()
+
+        self.assertEqual(contents_payload["status"], "success")
+        self.assertEqual(contents_payload["table"], "contents")
+        self.assertEqual(contents_payload["page_size"], 1)
+        self.assertEqual(contents_payload["total"], 2)
+        self.assertEqual(len(contents_payload["rows"]), 1)
+        self.assertIn("tables", contents_payload)
+        self.assertEqual(faces_payload["status"], "success")
+        self.assertNotIn("embedding", faces_payload["columns"])
+        self.assertTrue(all("embedding" not in row for row in faces_payload["rows"]))
+        self.assertEqual(people_payload["status"], "success")
+        self.assertEqual(people_payload["rows"][0]["name"], "Alice")
+        self.assertEqual(snapshots_payload["status"], "success")
+        self.assertNotIn("face_assignments_json", snapshots_payload["columns"])
+        self.assertNotIn("people_json", snapshots_payload["columns"])
+        self.assertIn("face_assignments_bytes", snapshots_payload["columns"])
+        self.assertIn("people_bytes", snapshots_payload["columns"])
+        self.assertEqual(users_payload["status"], "success")
+        self.assertNotIn("password_hash", users_payload["columns"])
+        self.assertNotIn("salt", users_payload["columns"])
+        self.assertNotIn("iterations", users_payload["columns"])
+        self.assertTrue(
+            all("password_hash" not in row and "salt" not in row for row in users_payload["rows"])
+        )
+        self.assertEqual(invalid_payload["status"], "error")
+
     def test_text_search_prioritizes_named_person_and_supports_person_semantic_query(self):
         self._setup_admin()
         vector = np.ones(512, dtype=np.float32)
@@ -352,6 +440,10 @@ class AppApiTests(unittest.TestCase):
             app_module.db,
             "content_has_faces",
             return_value=True,
+        ), mock.patch.object(
+            app_module.db,
+            "get_content_by_identity",
+            return_value={"id": 1},
         ):
             collect_payload = self.client.post(
                 "/api/collect?url=https%3A%2F%2Fexample.com%2Fvideo"
@@ -444,14 +536,14 @@ class AppApiTests(unittest.TestCase):
                     "source_url": extracted["image_urls"][0],
                 }
             ],
+        ) as download_images_mock, mock.patch.object(
+            app_module.db,
+            "get_content_by_identity",
+            return_value=None,
         ), mock.patch.object(
             app_module.db,
-            "upsert_content",
-            return_value={"id": 1},
-        ), mock.patch.object(
-            app_module.db,
-            "content_has_faces",
-            return_value=False,
+            "upsert_content_with_status",
+            return_value=({"id": 1}, True),
         ), mock.patch.object(app_module, "process_post_task") as process_mock:
             payload = self.client.post(
                 "/api/import/post",
@@ -461,7 +553,49 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(payload["status"], "success")
         self.assertEqual(payload["images"], 1)
         extract_mock.assert_called_once_with("https://weibo.cn/comment/5241373692531045")
+        download_images_mock.assert_called_once()
         process_mock.assert_called_once()
+
+    def test_import_post_skips_existing_weibo_content_without_faces(self):
+        self._setup_admin()
+        extracted = {
+            "platform": "weibo",
+            "external_id": "5241373692531045",
+            "title": "weibo post",
+            "post_text": "hello from weibo",
+            "image_urls": ["https://wx1.sinaimg.cn/large/a.jpg"],
+            "source_url": "https://weibo.cn/comment/5241373692531045",
+        }
+        app_module.db.upsert_content(
+            platform="weibo",
+            external_id="5241373692531045",
+            content_type="post",
+            title="existing post",
+            source_url="https://weibo.cn/comment/5241373692531045",
+        )
+
+        with mock.patch.object(
+            app_module.collector,
+            "extract_post_metadata",
+            return_value=extracted,
+        ), mock.patch.object(
+            app_module.collector,
+            "download_post_images",
+            side_effect=AssertionError("duplicate import should not download images"),
+        ) as download_images_mock, mock.patch.object(
+            app_module,
+            "process_post_task",
+            side_effect=AssertionError("duplicate import should not process"),
+        ) as process_mock:
+            payload = self.client.post(
+                "/api/import/post",
+                json={"url": "https://weibo.cn/comment/5241373692531045"},
+            ).json()
+
+        self.assertEqual(payload["status"], "success")
+        self.assertTrue(payload["duplicate"])
+        download_images_mock.assert_not_called()
+        process_mock.assert_not_called()
 
     def test_collect_weibo_post_routes_to_post_import_without_video_download(self):
         self._setup_admin()
@@ -492,14 +626,14 @@ class AppApiTests(unittest.TestCase):
                     "source_url": extracted["image_urls"][0],
                 }
             ],
+        ) as download_images_mock, mock.patch.object(
+            app_module.db,
+            "get_content_by_identity",
+            return_value=None,
         ), mock.patch.object(
             app_module.db,
-            "upsert_content",
-            return_value={"id": 1},
-        ), mock.patch.object(
-            app_module.db,
-            "content_has_faces",
-            return_value=False,
+            "upsert_content_with_status",
+            return_value=({"id": 1}, True),
         ), mock.patch.object(app_module, "process_post_task") as process_mock:
             payload = self.client.post(
                 "/api/collect?url=https%3A%2F%2Fweibo.cn%2Fcomment%2F5241373692531045"
@@ -508,6 +642,7 @@ class AppApiTests(unittest.TestCase):
         self.assertEqual(payload["status"], "success")
         self.assertEqual(payload["images"], 1)
         download_mock.assert_not_called()
+        download_images_mock.assert_called_once()
         process_mock.assert_called_once()
 
     def test_import_post_reports_weibo_cookie_auth_error(self):

@@ -1467,30 +1467,19 @@ def _submit_post_import(data, background_tasks, extracted=None, import_mode="pos
     )
     post_text = provided_text or extracted.get("post_text", "")
     merged_image_urls = image_urls or extracted.get("image_urls", [])
+    duplicate_response = {
+        "status": "success",
+        "msg": "图文内容已存在，已跳过重复处理。",
+        "duplicate": True,
+    }
+
+    if db.get_content_by_identity(platform, external_id):
+        return duplicate_response
 
     if not merged_image_urls:
         return {
             "status": "error",
             "msg": "未提供或解析到图片链接。",
-        }
-
-    content_metadata = dict(extracted.get("metadata") or {})
-    content_metadata["import_mode"] = import_mode
-    content = db.upsert_content(
-        platform=platform,
-        external_id=external_id,
-        content_type="post",
-        title=data.get("title") or extracted.get("title", ""),
-        source_url=url or extracted.get("source_url", ""),
-        post_text=post_text,
-        metadata=content_metadata,
-    )
-
-    if db.content_has_faces(content["id"]):
-        return {
-            "status": "success",
-            "msg": "图文内容已存在，已跳过重复处理。",
-            "duplicate": True,
         }
 
     images = collector.download_post_images(platform, external_id, merged_image_urls)
@@ -1499,6 +1488,20 @@ def _submit_post_import(data, background_tasks, extracted=None, import_mode="pos
             "status": "error",
             "msg": "图片下载失败，请检查图片链接或微博 Cookie。",
         }
+
+    content_metadata = dict(extracted.get("metadata") or {})
+    content_metadata["import_mode"] = import_mode
+    content, created = db.upsert_content_with_status(
+        platform=platform,
+        external_id=external_id,
+        content_type="post",
+        title=data.get("title") or extracted.get("title", ""),
+        source_url=url or extracted.get("source_url", ""),
+        post_text=post_text,
+        metadata=content_metadata,
+    )
+    if not created:
+        return duplicate_response
 
     background_tasks.add_task(
         process_post_task,
@@ -1952,6 +1955,27 @@ async def rollback_clustering(request: Request):
         }
     except Exception as e:
         logger.warning("聚类回退失败：error=%s", e)
+        return {"status": "error", "message": str(e)}
+
+
+@app.get("/api/admin/database/table")
+async def admin_database_table(
+    request: Request,
+    table: str = "contents",
+    page: int = 1,
+    page_size: int = 20,
+):
+    auth_error = _require_admin(request)
+    if auth_error:
+        return auth_error
+    try:
+        payload = db.browse_database_table(table, page=page, page_size=page_size)
+        payload["status"] = "success"
+        return payload
+    except ValueError as e:
+        return {"status": "error", "message": str(e)}
+    except Exception as e:
+        logger.warning("database table browse failed: table=%s error=%s", table, e)
         return {"status": "error", "message": str(e)}
 
 

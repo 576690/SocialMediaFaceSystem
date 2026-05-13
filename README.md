@@ -126,6 +126,19 @@ benchmark 模块用于在标准人脸数据集上评估 embedding、检索、聚
 
 `scripts/run_benchmark.py` 是命令行入口。需要注意的是，全量数据集加上 OPTICS 和多组质量参数会非常耗时，尤其在样本数上万时，聚类和检索阶段可能成为主要瓶颈。
 
+Thesis-oriented ablation benchmarks can be run with a smaller, deterministic
+stratified sample:
+
+```bash
+python scripts/run_benchmark.py --experiment-preset thesis-small --retrieval-backend auto
+```
+
+This preset writes `sample_manifest.csv`, `sample_manifest.json`,
+`quality_ablation_results.csv`, and `cluster_ablation_results.csv`. The quality
+ablation output keeps the legacy `balanced_score` and adds `balanced_score_v2`,
+which combines retrieval accuracy, clustering stability, retention rate, and
+accepted face quality for thesis tables.
+
 ### `core/weibo_adapter.py`
 
 `WeiboUserCollector` 负责微博用户源适配。它对 `weibo-spider` 做兼容封装，处理 cookie、用户地址归一化、分页抓取、图片提取和关键词过滤。
